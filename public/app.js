@@ -114,7 +114,20 @@
 
   selectBtn.addEventListener('click', () => {
     const arr = Array.from(state.selected);
-    alert('Selected files:\n' + arr.join('\n'));
+    fetch('/api/select', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(arr)
+    })
+      .then(res => res.json())
+      .then(data => {
+        console.log('Server response:', data);
+        alert('Selected files sent to server.');
+      })
+      .catch(err => {
+        console.error(err);
+        alert('Error sending selected files to server.');
+      });
   });
   upBtn.addEventListener('click', () => {
     const parts = state.path ? state.path.split('/') : [];

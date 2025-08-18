@@ -8,6 +8,7 @@ const PORT = config.port;
 
 // 静的ファイル配信
 app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.json());
 
 // JSON API: /api/files?path=<relative path>
 app.get('/api/files', async (req, res) => {
@@ -40,6 +41,13 @@ app.get('/api/files', async (req, res) => {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
   }
+});
+
+// 選択ファイルリスト受信用エンドポイント
+app.post('/api/select', (req, res) => {
+  const files = req.body;
+  console.log('Selected files:', files);
+  res.json({ success: true, files });
 });
 
 app.listen(PORT, () => {
