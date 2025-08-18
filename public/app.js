@@ -1,6 +1,5 @@
 (() => {
-  const foldersEl = document.getElementById('folders');
-  const filesEl = document.getElementById('files');
+  const entriesEl = document.getElementById('entries');
   const currentPathEl = document.getElementById('currentPath');
   const sortFieldEl = document.getElementById('sortField');
   const sortOrderEl = document.getElementById('sortOrder');
@@ -48,42 +47,50 @@
 
   function render() {
     currentPathEl.textContent = state.path || '/';
-    // folders
-    foldersEl.innerHTML = '';
-    sortItems(state.folders).forEach(folder => {
-      const li = document.createElement('li');
-      li.textContent = folder.name + ' (' + new Date(folder.mtime).toLocaleString() + ')';
-      li.className = 'list-item';
-      li.addEventListener('click', () => {
-        fetchData(state.path ? `${state.path}/${folder.name}` : folder.name);
-      });
-      foldersEl.appendChild(li);
-    });
-    // files
-    filesEl.innerHTML = '';
-    sortItems(state.files).forEach(file => {
-      const li = document.createElement('li');
-      li.textContent = file.name + ' (' + new Date(file.mtime).toLocaleString() + ')';
-      li.className = 'list-item';
-      li.dataset.name = file.name;
-      if (state.selected.has(getFullPath(file.name))) {
-        li.classList.add('highlight');
+    entriesEl.innerHTML = '';
+
+    const sortedFolders = sortItems(state.folders);
+    const sortedFiles = sortItems(state.files);
+    const combined = [
+      ...sortedFolders.map(f => ({ ...f, isFolder: true })),
+      ...sortedFiles.map(f => ({ ...f, isFolder: false }))
+    ];
+
+    combined.forEach(entry => {
+      const tr = document.createElement('tr');
+      if (entry.isFolder) {
+        tr.classList.add('folder-row');
+      } else {
+        const full = getFullPath(entry.name);
+        if (state.selected.has(full)) {
+          tr.classList.add('table-primary');
+        }
       }
-      li.addEventListener('click', () => {
-        const full = getFullPath(file.name);
-        if (state.selectionMode === 'single') {
-          state.selected.clear();
-          state.selected.add(full);
+      tr.innerHTML = `
+        <td>${entry.name}</td>
+        <td>${new Date(entry.mtime).toLocaleString()}</td>
+      `;
+      tr.addEventListener('click', () => {
+        if (entry.isFolder) {
+          fetchData(
+            state.path ? `${state.path}/${entry.name}` : entry.name
+          );
         } else {
-          if (state.selected.has(full)) {
-            state.selected.delete(full);
-          } else {
+          const full = getFullPath(entry.name);
+          if (state.selectionMode === 'single') {
+            state.selected.clear();
             state.selected.add(full);
+          } else {
+            if (state.selected.has(full)) {
+              state.selected.delete(full);
+            } else {
+              state.selected.add(full);
+            }
           }
         }
         render();
       });
-      filesEl.appendChild(li);
+      entriesEl.appendChild(tr);
     });
   }
 
@@ -107,15 +114,12 @@
 
   selectBtn.addEventListener('click', () => {
     const arr = Array.from(state.selected);
-    console.log('Selected files:', arr);
     alert('Selected files:\n' + arr.join('\n'));
   });
-
   upBtn.addEventListener('click', () => {
     const parts = state.path ? state.path.split('/') : [];
     parts.pop();
-    const parent = parts.join('/');
-    fetchData(parent);
+    fetchData(parts.join('/'));
   });
 
   // 初期ロード

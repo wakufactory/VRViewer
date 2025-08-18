@@ -2,49 +2,75 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ファイルセレクタ</title>
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+  />
   <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    .highlight { background-color: #d0f0d0; }
-    .list { margin: 10px 0; }
-    .list-item { cursor: pointer; padding: 5px; }
-    .controls { margin: 10px 0; }
+    /* カスタムスタイル */
+    body { font-family: Arial, sans-serif; }
+    .list-heading { margin-top: 1.5rem; }
+    .folder-row td:first-child::before {
+      content: "📁 ";
+    }
+    /* 行ホバー時の枠 */
+    .table-hover tbody tr:hover {
+      outline: 2px solid #0d6efd;
+    }
+    /* 日付を等幅フォントに */
+    table.table td:nth-child(2) {
+      font-family: monospace;
+    }
+
+    /* 名前を等幅フォントに */
+    table.table td:first-child {
+      font-family: monospace;
+    }
   </style>
 </head>
-<body>
-  <h1>ファイル選択UI</h1>
-  <div class="controls">
-    <label>ソート:
-      <select id="sortField">
-        <option value="name">名前</option>
-        <option value="mtime">更新日</option>
-      </select>
-    </label>
-    <label>順序:
-      <select id="sortOrder">
-        <option value="asc">昇順</option>
-        <option value="desc">降順</option>
-      </select>
-    </label>
-    <label>モード:
-      <select id="selectionMode">
-        <option value="single">単一</option>
-        <option value="multiple">複数</option>
-      </select>
-    </label>
+<body class="bg-dark text-light">
+  <div class="container py-4">
+    <h1 class="mb-4">ファイル選択UI</h1>
+    <div class="row mb-3">
+      <div class="col-auto mb-2">
+        <label for="sortField" class="form-label">ソート</label>
+        <select id="sortField" class="form-select form-select-sm">
+          <option value="name">名前</option>
+          <option value="mtime">更新日</option>
+        </select>
+      </div>
+      <div class="col-auto mb-2">
+        <label for="sortOrder" class="form-label">順序</label>
+        <select id="sortOrder" class="form-select form-select-sm">
+          <option value="asc">昇順</option>
+          <option value="desc">降順</option>
+        </select>
+      </div>
+      <div class="col-auto mb-2">
+        <label for="selectionMode" class="form-label">モード</label>
+        <select id="selectionMode" class="form-select form-select-sm">
+          <option value="single">単一</option>
+          <option value="multiple">複数</option>
+        </select>
+      </div>
+    </div>
+    <div id="currentPath" class="mb-3">/</div>
+    <button id="upBtn" class="btn btn-secondary mb-4">上へ戻る</button>
+    <div class="list">
+      <table class="table table-dark table-striped table-hover">
+        <thead>
+          <tr><th>名前</th><th>日付</th></tr>
+        </thead>
+        <tbody id="entries"></tbody>
+      </table>
+    </div>
+    <button id="selectBtn" class="btn btn-primary mt-4">選択</button>
   </div>
-  <div id="currentPath">/</div>
-  <button id="upBtn">上へ戻る</button>
-  <div class="list">
-    <h2>フォルダ</h2>
-    <ul id="folders"></ul>
-  </div>
-  <div class="list">
-    <h2>ファイル</h2>
-    <ul id="files"></ul>
-  </div>
-  <button id="selectBtn">Select</button>
-
+  <script
+    src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"
+  ></script>
   <script src="/app.js"></script>
 </body>
 </html>
