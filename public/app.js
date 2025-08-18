@@ -3,7 +3,6 @@
   const currentPathEl = document.getElementById('currentPath');
   const sortFieldEl = document.getElementById('sortField');
   const sortOrderEl = document.getElementById('sortOrder');
-  const selectionModeEl = document.getElementById('selectionMode');
   const selectBtn = document.getElementById('selectBtn');
   const upBtn = document.getElementById('upBtn');
 
@@ -16,6 +15,14 @@
     selectionMode: 'single',
     selected: new Set()
   };
+  // load sort settings from localStorage
+  const savedSortField = localStorage.getItem('sortField');
+  const savedSortOrder = localStorage.getItem('sortOrder');
+  if (savedSortField) state.sortField = savedSortField;
+  if (savedSortOrder) state.sortOrder = savedSortOrder;
+  // set UI to saved values
+  sortFieldEl.value = state.sortField;
+  sortOrderEl.value = state.sortOrder;
 
   function fetchData(relPath = '') {
     fetch(`/api/files?path=${encodeURIComponent(relPath)}`)
@@ -24,9 +31,8 @@
         state.path = relPath;
         state.folders = data.folders;
         state.files = data.files;
-        state.selectionMode = data.selectionMode;
-        selectionModeEl.value = state.selectionMode;
-        render();
+    state.selectionMode = data.selectionMode;
+    render();
       })
       .catch(err => console.error(err));
   }
@@ -43,6 +49,7 @@
       if (vA > vB) return state.sortOrder === 'asc' ? 1 : -1;
       return 0;
     });
+    selectBtn.disabled = state.selected.size === 0;
   }
 
   function render() {
@@ -92,6 +99,7 @@
       });
       entriesEl.appendChild(tr);
     });
+    selectBtn.disabled = state.selected.size === 0;
   }
 
   function getFullPath(name) {
@@ -100,15 +108,12 @@
 
   sortFieldEl.addEventListener('change', () => {
     state.sortField = sortFieldEl.value;
+    localStorage.setItem('sortField', state.sortField);
     render();
   });
   sortOrderEl.addEventListener('change', () => {
     state.sortOrder = sortOrderEl.value;
-    render();
-  });
-  selectionModeEl.addEventListener('change', () => {
-    state.selectionMode = selectionModeEl.value;
-    state.selected.clear();
+    localStorage.setItem('sortOrder', state.sortOrder);
     render();
   });
 
