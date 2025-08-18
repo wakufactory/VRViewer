@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>ファイルセレクタ</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    .highlight { background-color: #d0f0d0; }
+    .list { margin: 10px 0; }
+    .list-item { cursor: pointer; padding: 5px; }
+    .controls { margin: 10px 0; }
+  </style>
+</head>
+<body>
+  <h1>ファイル選択UI</h1>
+  <div class="controls">
+    <label>ソート:
+      <select id="sortField">
+        <option value="name">名前</option>
+        <option value="mtime">更新日</option>
+      </select>
+    </label>
+    <label>順序:
+      <select id="sortOrder">
+        <option value="asc">昇順</option>
+        <option value="desc">降順</option>
+      </select>
+    </label>
+    <label>モード:
+      <select id="selectionMode">
+        <option value="single">単一</option>
+        <option value="multiple">複数</option>
+      </select>
+    </label>
+  </div>
+  <div id="currentPath">/</div>
+  <button id="upBtn">上へ戻る</button>
+  <div class="list">
+    <h2>フォルダ</h2>
+    <ul id="folders"></ul>
+  </div>
+  <div class="list">
+    <h2>ファイル</h2>
+    <ul id="files"></ul>
+  </div>
+  <button id="selectBtn">Select</button>
+
+  <script src="/app.js"></script>
+</body>
+</html>
