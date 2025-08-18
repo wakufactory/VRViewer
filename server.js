@@ -4,7 +4,7 @@ const path = require('path');
 const config = require('./config.json');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = config.port;
 
 // 静的ファイル配信
 app.use(express.static(path.join(__dirname, 'public')));
@@ -24,6 +24,9 @@ app.get('/api/files', async (req, res) => {
     const files = [];
     const regex = new RegExp(config.fileRegex);
     for (const entry of entries) {
+      if (entry.name.startsWith('.')) {
+        continue;
+      }
       const entryPath = path.join(absPath, entry.name);
       const stats = await fs.stat(entryPath);
       if (entry.isDirectory()) {

@@ -1,5 +1,6 @@
 {
   "rootFolder": "./",
   "fileRegex": ".*",
-  "selectionMode": "single"
+  "selectionMode": "single",
+  "port": 3000
 }
