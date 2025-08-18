@@ -19,6 +19,10 @@
     .table-hover tbody tr:hover {
       outline: 2px solid #0d6efd;
     }
+    /* for visionpro */ 
+    .table-hover tbody {
+      cursor:pointer ;
+    }
     /* 日付を等幅フォントに */
     table.table td:nth-child(2) {
       font-family: monospace;
@@ -56,6 +60,7 @@
         </select>
       </div>
     </div>
+    <button id="selectBtn" class="btn btn-primary mt-4">選択</button>
     <div id="currentPath" class="mb-3">/</div>
     <button id="upBtn" class="btn btn-secondary mb-4">上へ戻る</button>
     <div class="list">
