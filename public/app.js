@@ -100,14 +100,28 @@
           if (state.selectionMode === 'single') {
             state.selected.clear();
             state.selected.add(full);
+            render();
+            const arr = Array.from(state.selected);
+            fetch('/api/select', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(arr)
+            })
+              .then(res => res.json())
+              .then(data => {
+                console.log('Server response:', data);
+              })
+              .catch(err => {
+                console.error(err);
+              });
           } else {
             if (state.selected.has(full)) {
               state.selected.delete(full);
             } else {
               state.selected.add(full);
             }
+            render();
           }
-          render();
         }
       });
       entriesEl.appendChild(tr);
@@ -141,7 +155,7 @@
       .then(res => res.json())
       .then(data => {
         console.log('Server response:', data);
-        alert('Selected files sent to server.');
+//        alert('Selected files sent to server.');
       })
       .catch(err => {
         console.error(err);
