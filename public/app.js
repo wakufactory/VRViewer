@@ -15,26 +15,40 @@
     selectionMode: 'single',
     selected: new Set()
   };
+
   // load sort settings from localStorage
   const savedSortField = localStorage.getItem('sortField');
   const savedSortOrder = localStorage.getItem('sortOrder');
   if (savedSortField) state.sortField = savedSortField;
   if (savedSortOrder) state.sortOrder = savedSortOrder;
+
   // set UI to saved values
   sortFieldEl.value = state.sortField;
   sortOrderEl.value = state.sortOrder;
 
   function fetchData(relPath = '') {
     fetch(`/api/files?path=${encodeURIComponent(relPath)}`)
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) {
+          throw new Error('Invalid path');
+        }
+        return res.json();
+      })
       .then(data => {
         state.path = relPath;
         state.folders = data.folders;
         state.files = data.files;
-    state.selectionMode = data.selectionMode;
-    render();
+        state.selectionMode = data.selectionMode;
+        state.selected.clear();
+        render();
       })
-      .catch(err => console.error(err));
+      .catch(err => {
+        console.error(err);
+        if (relPath) {
+          window.location.hash = '';
+          fetchData();
+        }
+      });
   }
 
   function sortItems(arr) {
@@ -49,7 +63,6 @@
       if (vA > vB) return state.sortOrder === 'asc' ? 1 : -1;
       return 0;
     });
-    selectBtn.disabled = state.selected.size === 0;
   }
 
   function render() {
@@ -79,9 +92,9 @@
       `;
       tr.addEventListener('click', () => {
         if (entry.isFolder) {
-          fetchData(
-            state.path ? `${state.path}/${entry.name}` : entry.name
-          );
+          const newPath = state.path ? `${state.path}/${entry.name}` : entry.name;
+          window.location.hash = encodeURIComponent(newPath);
+          fetchData(newPath);
         } else {
           const full = getFullPath(entry.name);
           if (state.selectionMode === 'single') {
@@ -94,8 +107,8 @@
               state.selected.add(full);
             }
           }
+          render();
         }
-        render();
       });
       entriesEl.appendChild(tr);
     });
@@ -111,6 +124,7 @@
     localStorage.setItem('sortField', state.sortField);
     render();
   });
+
   sortOrderEl.addEventListener('change', () => {
     state.sortOrder = sortOrderEl.value;
     localStorage.setItem('sortOrder', state.sortOrder);
@@ -134,12 +148,26 @@
         alert('Error sending selected files to server.');
       });
   });
+
   upBtn.addEventListener('click', () => {
     const parts = state.path ? state.path.split('/') : [];
     parts.pop();
-    fetchData(parts.join('/'));
+    const newPath = parts.join('/');
+    window.location.hash = encodeURIComponent(newPath);
+    fetchData(newPath);
   });
 
-  // 初期ロード
-  fetchData();
+  // 初期ロード: hashパスがあればそれを使用、それ以外はルート
+  const initialHash = decodeURIComponent(window.location.hash.slice(1));
+  if (initialHash) {
+    fetchData(initialHash);
+  } else {
+    fetchData();
+  }
+
+  // ハッシュ変更時の対応（例: ブラウザ履歴による変更）
+  window.addEventListener('hashchange', () => {
+    const newHash = decodeURIComponent(window.location.hash.slice(1));
+    fetchData(newHash);
+  });
 })();
