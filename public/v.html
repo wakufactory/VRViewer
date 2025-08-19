@@ -24,6 +24,7 @@
   <script>
     const statusEl = document.getElementById('status');
     const listEl = document.getElementById('fileList');
+    const baseUrl = 'https://192.168.23.4/share/HDD/';
 
     const evtSource = new EventSource('/api/stream');
     evtSource.onopen = () => {
@@ -46,7 +47,16 @@
         files.forEach(f => {
           const li = document.createElement('li');
           li.className = 'list-group-item';
-          li.textContent = f;
+          const lower = f.toLowerCase();
+
+            if (/\.(jpg|jpeg)$/i.test(lower)) {
+              const img = document.createElement('img');
+              img.src = encodeURI(baseUrl + f);
+              img.style.maxWidth = '100%';
+              li.appendChild(img);
+            } else {
+            li.textContent = f;
+          }
           listEl.appendChild(li);
         });
       }
