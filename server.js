@@ -1,5 +1,7 @@
 const express = require('express');
-const fs = require('fs').promises;
+const fs = require('fs');
+const fsp = fs.promises;
+const https = require('https');
 const path = require('path');
 const config = require('./config.json');
 
@@ -23,7 +25,7 @@ app.get('/api/files', async (req, res) => {
     if (!absPath.startsWith(root)) {
       return res.status(403).json({ error: 'Access denied' });
     }
-    const entries = await fs.readdir(absPath, { withFileTypes: true });
+    const entries = await fsp.readdir(absPath, { withFileTypes: true });
     const folders = [];
     const files = [];
     const regex = new RegExp(config.fileRegex);
@@ -32,7 +34,7 @@ app.get('/api/files', async (req, res) => {
         continue;
       }
       const entryPath = path.join(absPath, entry.name);
-      const stats = await fs.stat(entryPath);
+      const stats = await fsp.stat(entryPath);
       if (entry.isDirectory()) {
         folders.push({ name: entry.name, mtime: stats.mtimeMs });
       } else if (entry.isFile() && regex.test(entry.name)) {
@@ -70,6 +72,11 @@ app.get('/api/files', async (req, res) => {
   res.json({ success: true, files });
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
+const options = {
+  key: fs.readFileSync(path.join(__dirname, 'ssl', 'key.pem')),
+  cert: fs.readFileSync(path.join(__dirname, 'ssl', 'cert.pem'))
+};
+
+https.createServer(options, app).listen(PORT, () => {
+  console.log(`Server running at https://localhost:${PORT}`);
 });

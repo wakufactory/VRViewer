@@ -4,6 +4,7 @@
   "description": "ExpressサーバとVanilla JSクライアントによるファイル選択UIプロジェクト",
   "main": "server.js",
   "scripts": {
+    "postinstall": "mkdir -p ssl && openssl req -nodes -new -x509 -keyout ssl/key.pem -out ssl/cert.pem -days 365 -subj \"/C=JP/ST=Tokyo/L=Tokyo/O=SelfSigned/CN=localhost\"",
     "start": "node server.js"
   },
   "dependencies": {
