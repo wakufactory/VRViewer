@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>360° WebXR Viewer</title>
+  <script src="https://cdn.jsdelivr.net/npm/aframe@1.7.0/dist/aframe.min.js"></script>
+  <style>
+    body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
+    #file-input { position: absolute; top: 10px; left: 10px; z-index: 1000; }
+    #play-pause-btn {
+      position: absolute; left: 50%; top: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 1000; padding: 10px 20px;
+      font-size: 16px; display: none;
+    }
+    #seek-bar {
+      position: absolute; left: 50%; bottom: 5%;
+      transform: translateX(-50%);
+      z-index: 1000; width: 50%; display: none;
+    }
+    a-scene {
+      width: 100%; height: 100%;
+      position: absolute; top: 0; left: 0;
+    }
+  </style>
+</head>
+<body>
+  <input type="file" id="file-input" accept="image/*,video/*" />
+  <button id="play-pause-btn">Play</button>
+  <input type="range" id="seek-bar" min="0" max="100" step="0.1" value="0" />
+
+  <a-scene background="color:#88c" embedded vr-mode-ui="enabled: true" isMobile="false">
+    <a-assets>
+      <img id="imageAsset" crossorigin="anonymous" />
+      <video id="videoAsset" crossorigin="anonymous" webkit-playsinline playsinline loop="false"></video>
+    </a-assets>
+    <a-entity id="camrig" rotation="0 180 0">
+      <a-entity camera look-controls position="0 1.6 0"></a-entity>
+      <a-entity id="lhand"
+                hand-tracking-controls="hand: left;modelColor:#222;modelStyle:none"
+                pinch-handler>
+      </a-entity>
+      <a-entity id="rhand"
+                hand-tracking-controls="hand: right;modelColor:#222;modelStyle:none"
+                pinch-handler>
+      </a-entity>
+    </a-entity>
+
+    <a-sky id="sky" src="#imageAsset" visible="false"></a-sky>
+    <a-videosphere id="video-sphere" src="#videoAsset" loop="true" visible="false"></a-videosphere>
+  </a-scene>
+
+  <script>
+    // UI elements
+    const fileInput = document.getElementById('file-input');
+    const playPauseBtn = document.getElementById('play-pause-btn');
+    const seekBar = document.getElementById('seek-bar');
+    // A-Frame elements
+    const sceneEl = document.querySelector('a-scene');
+    const skyEl = document.getElementById('sky');
+    const videoSphere = document.getElementById('video-sphere');
+    const imageAsset = document.getElementById('imageAsset');
+    const videoAsset = document.getElementById('videoAsset');
+
+    // Toggle play/pause
+    function togglePlayPause() {
+      if (!videoAsset.src) return;
+      if (videoAsset.paused) {
+        videoAsset.play();
+        playPauseBtn.textContent = 'Pause';
+      } else {
+        videoAsset.pause();
+        playPauseBtn.textContent = 'Play';
+      }
+    }
+
+    // Load image or video
+    function loadMedia(src, isVideo) {
+      fileInput.style.display = 'none';
+      if (isVideo) {
+        imageAsset.removeAttribute('src');
+        skyEl.setAttribute('visible', 'false');
+        videoAsset.setAttribute('src', src);
+        videoSphere.setAttribute('visible', 'true');
+        playPauseBtn.style.display = 'block';
+        seekBar.style.display = 'block';
+        videoAsset.addEventListener('loadedmetadata', () => { seekBar.max = videoAsset.duration; });
+        videoAsset.addEventListener('timeupdate', () => { seekBar.value = videoAsset.currentTime; });
+        seekBar.addEventListener('input', () => { videoAsset.currentTime = seekBar.value; });
+        playPauseBtn.addEventListener('click', togglePlayPause);
+        sceneEl.addEventListener('triggerdown', togglePlayPause);
+      } else {
+        videoAsset.pause();
+        videoAsset.removeAttribute('src');
+        videoSphere.setAttribute('visible', 'false');
+        skyEl.setAttribute('visible', 'false');
+        imageAsset.setAttribute('src', src);
+        imageAsset.addEventListener('load', () => {
+          skyEl.setAttribute('src', '#imageAsset');
+          const mesh = skyEl.getObject3D('mesh');
+          if (mesh) { mesh.material.map.needsUpdate = true; }
+          skyEl.setAttribute('visible', 'true');
+        }, { once: true });
+        playPauseBtn.style.display = 'none';
+        seekBar.style.display = 'none';
+      }
+    }
+
+    // File input handler
+    fileInput.addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      loadMedia(URL.createObjectURL(file), file.type.startsWith('video/'));
+    });
+
+    // URL query handler
+    window.addEventListener('load', () => {
+      const query = window.location.search.substring(1);
+      if (query) {
+        loadMedia(query, /\.(mp4|webm|ogg)$/i.test(query));
+      }
+    });
+
+    // eventsource 
+    const baseUrl = 'https://192.168.23.4/share/HDD/';
+
+    const evtSource = new EventSource('/api/stream');
+    evtSource.onopen = () => {
+      console.log('接続済み');
+//      statusEl.textContent = '接続済み';
+//      statusEl.className = 'alert alert-success';
+    };
+    evtSource.onerror = () => {
+//      statusEl.textContent = '接続エラー';
+//      statusEl.className = 'alert alert-danger';
+    };
+    evtSource.addEventListener('files', e => {
+      const files = JSON.parse(e.data);
+      if (files.length === 0) {
+
+      } else {
+        console.log(files)
+        const p = baseUrl + files[0] 
+        loadMedia(p,false) 
+      }
+    });
+
+    // A-Frameコンポーネント：ハンドトラッキングpinch操作の統合
+    AFRAME.registerComponent('pinch-handler', {
+      init: function() {
+        this.startX = null;
+        this.flicked = false;
+        this.sceneEl = this.el.sceneEl;
+        this.skyEl = this.sceneEl.querySelector('#sky');
+        this.videoSphere = this.sceneEl.querySelector('#video-sphere');
+        this.togglePlayPause = function() {
+          if (!videoAsset.src) return;
+          if (videoAsset.paused) {
+            videoAsset.play();
+            playPauseBtn.textContent = 'Pause';
+          } else {
+            videoAsset.pause();
+            playPauseBtn.textContent = 'Play';
+          }
+        };
+        this.el.addEventListener('pinchstarted', this.onPinchStart.bind(this));
+        this.el.addEventListener('pinchmoved', this.onPinchMove.bind(this));
+        this.el.addEventListener('pinchended', this.onPinchEnd.bind(this));
+      },
+      onPinchStart: function(evt) {
+        this.startX = evt.detail.position.x;
+        this.flicked = false;
+      },
+      onPinchMove: function(evt) {
+        if (this.startX === null) return;
+        const currentX = evt.detail.position.x;
+        const delta = currentX - this.startX;
+        if (Math.abs(delta) > 0.1) {
+          const targetEl = this.skyEl.getAttribute('visible') ? this.skyEl : this.videoSphere;
+          const rotation = targetEl.getAttribute('rotation');
+          rotation.y += (delta > 0 ? -60 : 60);
+          targetEl.setAttribute('rotation', rotation);
+          this.flicked = true;
+          this.startX = currentX;
+        }
+      },
+      onPinchEnd: function() {
+        if (this.startX === null) return;
+        if (this.videoSphere.getAttribute('visible') && !this.flicked) {
+          this.togglePlayPause();
+        }
+        this.startX = null;
+      }
+    });
+  </script>
+</body>
+</html>
