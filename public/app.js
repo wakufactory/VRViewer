@@ -94,7 +94,6 @@
         if (entry.isFolder) {
           const newPath = state.path ? `${state.path}/${entry.name}` : entry.name;
           window.location.hash = encodeURIComponent(newPath);
-          fetchData(newPath);
         } else {
           const full = getFullPath(entry.name);
           if (state.selectionMode === 'single') {
@@ -168,7 +167,6 @@
     parts.pop();
     const newPath = parts.join('/');
     window.location.hash = encodeURIComponent(newPath);
-    fetchData(newPath);
   });
 
   // 初期ロード: hashパスがあればそれを使用、それ以外はルート

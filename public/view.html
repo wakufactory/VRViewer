@@ -93,7 +93,7 @@
         videoAsset.pause();
         videoAsset.removeAttribute('src');
         videoSphere.setAttribute('visible', 'false');
-        skyEl.setAttribute('visible', 'false');
+//       skyEl.setAttribute('visible', 'false');
         imageAsset.setAttribute('src', src);
         imageAsset.addEventListener('load', () => {
           skyEl.setAttribute('src', '#imageAsset');
@@ -122,28 +122,34 @@
     });
 
     // eventsource 
-    const baseUrl = 'https://192.168.23.4/share/HDD/';
+    const baseUrl = 'data/';
 
-    const evtSource = new EventSource('/api/stream');
-    evtSource.onopen = () => {
-      console.log('接続済み');
-//      statusEl.textContent = '接続済み';
-//      statusEl.className = 'alert alert-success';
-    };
-    evtSource.onerror = () => {
-//      statusEl.textContent = '接続エラー';
-//      statusEl.className = 'alert alert-danger';
-    };
-    evtSource.addEventListener('files', e => {
-      const files = JSON.parse(e.data);
-      if (files.length === 0) {
+    let ws;
 
-      } else {
-        console.log(files)
-        const p = baseUrl + files[0] 
-        loadMedia(p,false) 
-      }
-    });
+    function connect() {
+      ws = new WebSocket(`wss://${location.host}`);
+      ws.onopen = () => {
+        console.log('接続済み');
+      };
+      ws.onerror = () => {
+        console.log('接続エラー');
+      };
+      ws.onmessage = e => {
+        const files = JSON.parse(e.data);
+        if (files.length === 0) {
+
+        } else {
+          console.log(files)
+          const p = baseUrl + files[0] 
+          loadMedia(p, /\.(mp4|webm|ogg)$/i.test(p)) 
+        }
+      };
+      ws.onclose = () => {
+        console.log("reconnecting...");
+        setTimeout(connect, 1000);
+      };
+    }
+    connect();
 
     // A-Frameコンポーネント：ハンドトラッキングpinch操作の統合
     AFRAME.registerComponent('pinch-handler', {

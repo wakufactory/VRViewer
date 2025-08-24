@@ -4,12 +4,11 @@ const fsp = fs.promises;
 const https = require('https');
 const path = require('path');
 const config = require('./config.json');
+const WebSocket = require('ws');
 
 const app = express();
 const PORT = config.port;
 
-// SSE clients接続リスト
-const clients = [];
 
 // 静的ファイル配信
 app.use(express.static(path.join(__dirname, 'public')));
@@ -48,26 +47,16 @@ app.get('/api/files', async (req, res) => {
   }
 });
 
- // SSEエンドポイント
- app.get('/api/stream', (req, res) => {
-   res.setHeader('Content-Type', 'text/event-stream');
-   res.setHeader('Cache-Control', 'no-cache');
-   res.setHeader('Connection', 'keep-alive');
-   res.flushHeaders();
-   clients.push(res);
-   req.on('close', () => {
-     clients.splice(clients.indexOf(res), 1);
-   });
- });
 
  // 選択ファイルリスト受信用エンドポイント
  app.post('/api/select', (req, res) => {
   const files = req.body;
   console.log('Selected files:', files);
-  // SSE通知
-  clients.forEach(client => {
-    client.write(`event: files\n`);
-    client.write(`data: ${JSON.stringify(files)}\n\n`);
+  // WebSocket通知
+  wss.clients.forEach(client => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(JSON.stringify(files));
+    }
   });
   res.json({ success: true, files });
 });
@@ -77,6 +66,8 @@ const options = {
   cert: fs.readFileSync(path.join(__dirname, 'ssl', 'cert.pem'))
 };
 
-https.createServer(options, app).listen(PORT, () => {
+const server = https.createServer(options, app);
+const wss = new WebSocket.Server({ server });
+server.listen(PORT, () => {
   console.log(`Server running at https://localhost:${PORT}`);
 });
