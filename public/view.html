@@ -155,6 +155,7 @@
     AFRAME.registerComponent('pinch-handler', {
       init: function() {
         this.startX = null;
+        this.startY = null;
         this.flicked = false;
         this.sceneEl = this.el.sceneEl;
         this.skyEl = this.sceneEl.querySelector('#sky');
@@ -175,19 +176,25 @@
       },
       onPinchStart: function(evt) {
         this.startX = evt.detail.position.x;
+        this.startY = evt.detail.position.y;
         this.flicked = false;
       },
       onPinchMove: function(evt) {
-        if (this.startX === null) return;
+        if (this.startX === null || this.startY === null) return;
         const currentX = evt.detail.position.x;
-        const delta = currentX - this.startX;
-        if (Math.abs(delta) > 0.1) {
+        const currentY = evt.detail.position.y;
+        const deltaX = currentX - this.startX;
+        const deltaY = currentY - this.startY;
+        const horizThreshold = 0.1;
+        const vertThreshold = 0.05;
+        if (Math.abs(deltaX) > horizThreshold && Math.abs(deltaY) < vertThreshold) {
           const targetEl = this.skyEl.getAttribute('visible') ? this.skyEl : this.videoSphere;
           const rotation = targetEl.getAttribute('rotation');
-          rotation.y += (delta > 0 ? -60 : 60);
+          rotation.y += (deltaX > 0 ? -60 : 60);
           targetEl.setAttribute('rotation', rotation);
           this.flicked = true;
           this.startX = currentX;
+          this.startY = currentY;
         }
       },
       onPinchEnd: function() {
