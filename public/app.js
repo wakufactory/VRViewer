@@ -91,8 +91,6 @@
       if (!entry.isFolder && entry.thumbUrl) {
         const img = document.createElement('img');
         img.src = entry.thumbUrl;
-        img.style.width = '50px';
-        img.style.marginRight = '8px';
         nameTd.appendChild(img);
       }
       nameTd.appendChild(document.createTextNode(entry.name));

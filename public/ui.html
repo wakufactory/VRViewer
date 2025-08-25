@@ -34,7 +34,7 @@
     }
     /* サムネイル画像スタイル */
     table.table td img {
-      width: 50px;
+      width: 100px;
       margin-right: 8px;
       vertical-align: middle;
     }
@@ -44,7 +44,7 @@
   <div class="container py-4">
     <h1 class="mb-4">ファイル選択UI</h1>
 
-    <button id="selectBtn" class="btn btn-primary mt-4 mb-4" disabled>選択</button>
+    <button id="selectBtn" class="btn btn-primary mt-4 mb-4" style="display:none" disabled>選択</button>
     <div class="row mb-3">
       <div class="col-auto mb-2 d-flex align-items-center flex-nowrap">
         <label for="sortField" class="form-label me-2 text-nowrap">ソート</label>
@@ -67,12 +67,6 @@
     </div>
     <div class="list">
       <table class="table table-dark table-striped table-hover">
-        <thead>
-          <tr>
-            <th>名前</th>
-            <th>更新日</th>
-          </tr>
-        </thead>
         <tbody id="entries"></tbody>
       </table>
     </div>
