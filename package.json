@@ -1,7 +1,7 @@
 {
   "name": "vr-viewer",
   "version": "1.0.0",
-  "description": "ExpressサーバとVanilla JSクライアントによるファイル選択UIプロジェクト",
+  "description": "VR file viewer server",
   "main": "vrv_server.js",
   "scripts": {
     "postinstall": "mkdir -p ssl && openssl req -nodes -new -x509 -keyout ssl/key.pem -out ssl/cert.pem -days 365 -subj \"/C=JP/ST=Tokyo/L=Tokyo/O=SelfSigned/CN=localhost\"",
