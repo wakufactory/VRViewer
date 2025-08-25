@@ -1,11 +1,13 @@
 # VR Viewer
 
 ## プロジェクト概要
-WebXR 対応の 360° 画像・動画ビューワーです。  
-ファイル選択用の `ui.html` と、VR機器上でビュアーを表示する `view.html` に画面を分けており、PC のブラウザから操作して WebSocket を介して選択ファイルをリアルタイムに更新します。
+WebXR 対応の 360° 画像・動画ビューワーです。 
+ローカルwebサーバで動かすwebアプリです。
+
+ファイル選択用の `ui.html` と、VR機器上でビュアーを表示する `view.html` に画面を分けており、PCやスマホのブラウザから操作して WebSocket を介して選択ファイルをリアルタイムに更新します。
 
 ## 特徴
-- A-Frame を使った VR/WebXR 立体視サポート  
+- A-Frame を使った VR/WebXRサポート  
 - 360° 画像・動画の切り替え表示  
 - 動画の再生・一時停止・シーク操作  
 - ピンチ操作によるフリックでの視点回転  
@@ -14,7 +16,7 @@ WebXR 対応の 360° 画像・動画ビューワーです。
 ## 前提条件
 - Node.js と npm がインストールされていること  
 - SSL 鍵・証明書を生成（`npm install` 後に自動実行される `postinstall` スクリプト）  
-- `config.json` でファイル選択対象フォルダ（`rootFolder`）を設定  
+- `config.json` でファイル選択対象フォルダ（`rootFolder`）を設定 (デフォルトではpublic/dataの下にあることを想定)  
 
 ## インストール & 起動方法
 1. リポジトリをクローン  
@@ -34,12 +36,12 @@ WebXR 対応の 360° 画像・動画ビューワーです。
    - ファイル選択ページ：  
      `https://localhost:<port>/ui.html`  
    - ビュアーページ：  
-     `https://localhost:<port>/view.html`
+     `https://<server-ip>:<port>/view.html`
 
 ## 使用方法
 ### 1. ファイル選択ページ (`ui.html`)
 1. `ui.html` を開き、一覧から画像または動画をクリックで選択  
-2. 「選択」ボタンをクリックし、サーバーにファイル情報を送信  
+2. フォルダの場合はそのフォルダに移動  
 
 ### 2. ビュアーページ (`view.html`)
 - 選択されたファイルが自動で表示・再生されます。  
@@ -56,18 +58,19 @@ WebXR 対応の 360° 画像・動画ビューワーです。
 ├── package.json
 ├── vrv_server.js
 ├── config.json
+├── ssl          # SSL 鍵・証明書
 └── public
     ├── view.html    # ビューワーページ
     ├── ui.html      # ファイル選択UI
     ├── app.js       # UI用クライアントスクリプト
-    └── ssl          # SSL 鍵・証明書
+
 ```
 
 ## 設定ファイル (config.json)
 ```json
 {
   "rootFolder": "./data",
-  "port": 8443,
+  "port": 3010,
   "fileRegex": "\\.(jpg|png|mp4|webm)$",
   "selectionMode": "single"
 }
@@ -75,7 +78,6 @@ WebXR 対応の 360° 画像・動画ビューワーです。
 - `rootFolder`：監視フォルダの相対/絶対パス  
 - `port`：サーバー起動ポート（HTTPS）  
 - `fileRegex`：読み込み対象のファイル拡張子を正規表現で指定  
-- `selectionMode`：`single` または `multiple`  
 
 ## ライセンス
 MIT License
