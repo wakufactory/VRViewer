@@ -10,9 +10,10 @@ const app = express();
 const PORT = config.port;
 
 
-// 静的ファイル配信
-app.use(express.static(path.join(__dirname, 'public')));
-app.use(express.json());
+ // 静的ファイル配信
+ app.use('/data', express.static(path.join(__dirname, 'public', 'data'), { dotfiles: 'allow' }));
+ app.use(express.static(path.join(__dirname, 'public')));
+ app.use(express.json());
 
 // JSON API: /api/files?path=<relative path>
 app.get('/api/files', async (req, res) => {
@@ -28,6 +29,16 @@ app.get('/api/files', async (req, res) => {
     const folders = [];
     const files = [];
     const regex = new RegExp(config.fileRegex);
+
+    // サムネイルフォルダ検出
+    let thumbSet = new Set();
+    const thumbDir = path.join(absPath, '.thumb');
+    try {
+      const thumbEntries = await fsp.readdir(thumbDir);
+      thumbSet = new Set(thumbEntries);
+    } catch (err) {
+      // サムネイルフォルダが無い場合は無視
+    }
     for (const entry of entries) {
       if (entry.name.startsWith('.')) {
         continue;
@@ -37,7 +48,11 @@ app.get('/api/files', async (req, res) => {
       if (entry.isDirectory()) {
         folders.push({ name: entry.name, mtime: stats.mtimeMs });
       } else if (entry.isFile() && regex.test(entry.name)) {
-        files.push({ name: entry.name, mtime: stats.mtimeMs });
+        const thumbExists = thumbSet.has(entry.name);
+        const thumbUrl = thumbExists
+          ? '/data/' + (relPath ? relPath + '/' : '') + '.thumb/' + encodeURIComponent(entry.name)
+          : null;
+        files.push({ name: entry.name, mtime: stats.mtimeMs, thumbUrl });
       }
     }
     res.json({ folders, files, selectionMode: config.selectionMode });

@@ -86,10 +86,20 @@
           tr.classList.add('table-primary');
         }
       }
-      tr.innerHTML = `
-        <td>${entry.name}</td>
-        <td>${new Date(entry.mtime).toLocaleString()}</td>
-      `;
+      // サムネイル表示:ファイルならthumbnailと名前
+      const nameTd = document.createElement('td');
+      if (!entry.isFolder && entry.thumbUrl) {
+        const img = document.createElement('img');
+        img.src = entry.thumbUrl;
+        img.style.width = '50px';
+        img.style.marginRight = '8px';
+        nameTd.appendChild(img);
+      }
+      nameTd.appendChild(document.createTextNode(entry.name));
+      const dateTd = document.createElement('td');
+      dateTd.textContent = new Date(entry.mtime).toLocaleString();
+      tr.appendChild(nameTd);
+      tr.appendChild(dateTd);
       tr.addEventListener('click', () => {
         if (entry.isFolder) {
           const newPath = state.path ? `${state.path}/${entry.name}` : entry.name;
