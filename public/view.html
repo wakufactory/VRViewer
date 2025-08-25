@@ -186,7 +186,7 @@
         const deltaX = currentX - this.startX;
         const deltaY = currentY - this.startY;
         const horizThreshold = 0.1;
-        const vertThreshold = 0.05;
+        const vertThreshold = 0.02;
         if (Math.abs(deltaX) > horizThreshold && Math.abs(deltaY) < vertThreshold) {
           const targetEl = this.skyEl.getAttribute('visible') ? this.skyEl : this.videoSphere;
           const rotation = targetEl.getAttribute('rotation');
