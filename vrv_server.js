@@ -83,6 +83,15 @@ const options = {
 
 const server = https.createServer(options, app);
 const wss = new WebSocket.Server({ server });
+
+// クライアントからのログ受信
+wss.on('connection', (ws, req) => {
+  const ip = req.socket.remoteAddress;
+  ws.on('message', message => {
+    const text = typeof message === 'string' ? message : message.toString('utf8');
+    console.log(`Client log [${ip}]:`, text);
+  });
+});
 server.listen(PORT, () => {
   console.log(`Server running at https://localhost:${PORT}`);
 });
