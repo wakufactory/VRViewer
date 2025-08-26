@@ -227,12 +227,12 @@
       const axis = evt.detail.axis;
       const currX = axis[2];
       const prevX = this.prevAxis[2];
-      const threshold = 0.95;
+      const threshold = 0.9;
+//      log(prevX + " -> " + currX);
       if (prevX <= threshold && currX > threshold) {
-        console.log("rotate left")
-        this.rotateBy(-30);
-      } else if (prevX >= -threshold && currX < -threshold) {
         this.rotateBy(30);
+      } else if (prevX >= -threshold && currX < -threshold) {
+        this.rotateBy(-30);
       }
       this.prevAxis = [...axis];
     },
