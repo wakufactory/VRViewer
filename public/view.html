@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <title>360° WebXR Viewer</title>
   <script src="https://cdn.jsdelivr.net/npm/aframe@1.7.0/dist/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/aframe-extras@6.1.1/dist/aframe-extras.min.js"></script>
   <style>
     body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
     #file-input { position: absolute; top: 10px; left: 10px; z-index: 1000; }
@@ -44,6 +45,8 @@
                 hand-tracking-controls="hand: right;modelColor:#222;modelStyle:none"
                 pinch-handler>
       </a-entity>
+      <a-entity id="left-controller" hand-controls="hand: left" controller-listener></a-entity>
+      <a-entity id="right-controller" hand-controls="hand: right" controller-listener></a-entity>
     </a-entity>
 
     <a-sky id="sky" src="#imageAsset" visible="false" segments-height=50 segments-width=100></a-sky>
@@ -117,7 +120,7 @@
     window.addEventListener('load', () => {
       const query = window.location.search.substring(1);
       if (query) {
-        loadMedia(query, /\.(mp4|webm|ogg)$/i.test(query));
+        loadMedia(query, /\.(mp4|webm|ogg)$/i.test(qupsery));
       }
     });
 
@@ -125,14 +128,20 @@
     const baseUrl = 'data/';
 
     let ws;
+    function log(msg) {
+      const data = typeof msg === 'string' ? msg : JSON.stringify(msg);
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(data);
+      }
+    }
 
     function connect() {
       ws = new WebSocket(`wss://${location.host}`);
       ws.onopen = () => {
-        console.log('接続済み');
+        log('接続済み');
       };
       ws.onerror = () => {
-        console.log('接続エラー');
+        log('接続エラー');
       };
       ws.onmessage = e => {
         const files = JSON.parse(e.data);
@@ -145,7 +154,7 @@
         }
       };
       ws.onclose = () => {
-        console.log("reconnecting...");
+        log("reconnecting...");
         setTimeout(connect, 1000);
       };
     }
@@ -190,7 +199,7 @@
         if (Math.abs(deltaX) > horizThreshold && Math.abs(deltaY) < vertThreshold) {
           const targetEl = this.skyEl.getAttribute('visible') ? this.skyEl : this.videoSphere;
           const rotation = targetEl.getAttribute('rotation');
-          rotation.y += (deltaX > 0 ? -60 : 60);
+          rotation.y += (deltaX > 0 ? -30 : 30);
           targetEl.setAttribute('rotation', rotation);
           this.flicked = true;
           this.startX = currentX;
@@ -205,6 +214,45 @@
         this.startX = null;
       }
     });
+  AFRAME.registerComponent('controller-listener', {
+    init: function() {
+      this.prevAxis = [0, 0,0,0];
+      this.sceneEl = this.el.sceneEl;
+      this.skyEl = this.sceneEl.querySelector('#sky');
+      this.videoSphere = this.sceneEl.querySelector('#video-sphere');
+      this.el.addEventListener('axismove', this.onAxisMove.bind(this));
+      this.el.addEventListener('triggerdown', this.onTriggerDown.bind(this));
+    },
+    onAxisMove: function(evt) {
+      const axis = evt.detail.axis;
+      const currX = axis[2];
+      const prevX = this.prevAxis[2];
+      const threshold = 0.95;
+      if (prevX <= threshold && currX > threshold) {
+        console.log("rotate left")
+        this.rotateBy(-30);
+      } else if (prevX >= -threshold && currX < -threshold) {
+        this.rotateBy(30);
+      }
+      this.prevAxis = [...axis];
+    },
+    rotateBy: function(deg) {
+      const targetEl = this.skyEl.getAttribute('visible') ? this.skyEl : this.videoSphere;
+      const rotation = targetEl.getAttribute('rotation');
+      targetEl.setAttribute('rotation', { x: rotation.x, y: rotation.y + deg, z: rotation.z });
+    },
+    onTriggerDown: function() {
+      log("triggerdown");
+      if (!videoAsset.src) return;
+      if (videoAsset.paused) {
+        videoAsset.play();
+        playPauseBtn.textContent = 'Pause';
+      } else {
+        videoAsset.pause();
+        playPauseBtn.textContent = 'Play';
+      }
+    }
+  });
   </script>
 </body>
 </html>
