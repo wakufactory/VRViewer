@@ -5,6 +5,7 @@
   const sortOrderEl = document.getElementById('sortOrder');
   const selectBtn = document.getElementById('selectBtn');
   const upBtn = document.getElementById('upBtn');
+const currentInfoEl = document.getElementById('currentInfo');
 
   let state = {
     path: '',
@@ -13,7 +14,8 @@
     sortField: 'name',
     sortOrder: 'asc',
     selectionMode: 'single',
-    selected: new Set()
+    selected: new Set(),
+    info: null
   };
 
   // load sort settings from localStorage
@@ -40,6 +42,7 @@
         state.files = data.files;
         state.selectionMode = data.selectionMode;
         state.selected.clear();
+        state.info = data.info;
         render();
       })
       .catch(err => {
@@ -67,6 +70,7 @@
 
   function render() {
     currentPathEl.textContent = state.path || '/';
+    currentInfoEl.textContent = state.info ? JSON.stringify(state.info, null, 2) : '';
     entriesEl.innerHTML = '';
 
     const sortedFolders = sortItems(state.folders);
@@ -94,6 +98,11 @@
         nameTd.appendChild(img);
       }
       nameTd.appendChild(document.createTextNode(entry.name));
+      if (entry.isFolder && entry.info) {
+        const infoSpan = document.createElement('span');
+        infoSpan.textContent = ' ' + JSON.stringify(entry.info);
+        nameTd.appendChild(infoSpan);
+      }
       const dateTd = document.createElement('td');
       dateTd.textContent = new Date(entry.mtime).toLocaleString();
       tr.appendChild(nameTd);

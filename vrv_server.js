@@ -46,7 +46,15 @@ app.get('/api/files', async (req, res) => {
       const entryPath = path.join(absPath, entry.name);
       const stats = await fsp.stat(entryPath);
       if (entry.isDirectory()) {
-        folders.push({ name: entry.name, mtime: stats.mtimeMs });
+        let infoData = null;
+        const infoPath = path.join(entryPath, '.info.json');
+        try {
+          const raw = await fsp.readFile(infoPath, 'utf8');
+          infoData = JSON.parse(raw);
+        } catch (err) {
+          // .info.json missing or invalid
+        }
+        folders.push({ name: entry.name, mtime: stats.mtimeMs, info: infoData });
       } else if (entry.isFile() && regex.test(entry.name)) {
         const thumbExists = thumbSet.has(entry.name);
         const thumbUrl = thumbExists
@@ -55,7 +63,15 @@ app.get('/api/files', async (req, res) => {
         files.push({ name: entry.name, mtime: stats.mtimeMs, thumbUrl });
       }
     }
-    res.json({ folders, files, selectionMode: config.selectionMode });
+    let dirInfo = null;
+    const infoPath = path.join(absPath, '.info.json');
+    try {
+      const rawInfo = await fsp.readFile(infoPath, 'utf8');
+      dirInfo = JSON.parse(rawInfo);
+    } catch (err) {
+      // .info.json missing or invalid
+    }
+    res.json({ folders, files, selectionMode: config.selectionMode, info: dirInfo });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
