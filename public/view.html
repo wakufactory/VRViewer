@@ -99,9 +99,59 @@
 //       skyEl.setAttribute('visible', 'false');
         imageAsset.setAttribute('src', src);
         imageAsset.addEventListener('load', () => {
+          // 画像読み込み後にスカイへ反映し、アスペクト比に合わせてトリミング（cover）
           skyEl.setAttribute('src', '#imageAsset');
-          const mesh = skyEl.getObject3D('mesh');
-          if (mesh) { mesh.material.map.needsUpdate = true; }
+
+          const replaceSkyTexture = () => {
+            const mesh = skyEl.getObject3D('mesh');
+            if (!(mesh && mesh.material)) return false;
+            const THREE = AFRAME.THREE;
+            const newTex = new THREE.Texture(imageAsset);
+            // カラースペース/フィルタ設定（安定のためミップマップ無し・線形）
+            if (THREE.SRGBColorSpace) {
+              newTex.colorSpace = THREE.SRGBColorSpace;
+            } else if (THREE.sRGBEncoding) {
+              newTex.encoding = THREE.sRGBEncoding;
+            }
+            newTex.minFilter = THREE.LinearFilter;
+            newTex.magFilter = THREE.LinearFilter;
+            newTex.generateMipmaps = false;
+            newTex.flipY = true; // a-sky 用は上下が正しくなるように true
+            newTex.wrapS = THREE.ClampToEdgeWrapping;
+            newTex.wrapT = THREE.ClampToEdgeWrapping;
+
+            // アスペクト比に応じた repeat/offset（cover）
+            const iw = imageAsset.naturalWidth || (newTex.image && newTex.image.width) || 0;
+            const ih = imageAsset.naturalHeight || (newTex.image && newTex.image.height) || 1;
+            const A = iw / ih;    // 画像のアスペクト比
+            const D = 2;          // equirectangular の期待比（2:1）
+            let rx = 1, ry = 1, ox = 0, oy = 0;
+            if (A > D) {
+              rx = D / A; // 横をトリミング
+              ox = (1 - rx) / 2;
+            } else if (A < D) {
+              ry = A / D; // 縦をトリミング
+              oy = (1 - ry) / 2;
+            }
+            newTex.repeat.set(rx, ry);
+            newTex.offset.set(ox, oy);
+            newTex.needsUpdate = true;
+
+            // 既存テクスチャを破棄して差し替え
+            if (mesh.material.map && mesh.material.map.dispose) {
+              try { mesh.material.map.dispose(); } catch (e) {}
+            }
+            mesh.material.map = newTex;
+            mesh.material.needsUpdate = true;
+            return true;
+          };
+
+          // 既にメッシュ/マテリアルがあるなら即時差し替え、なければイベント待ち
+          if (!replaceSkyTexture()) {
+            const onReady = () => { replaceSkyTexture(); };
+            skyEl.addEventListener('materialtextureloaded', onReady, { once: true });
+          }
+
           skyEl.setAttribute('visible', 'true');
         }, { once: true });
         playPauseBtn.style.display = 'none';
