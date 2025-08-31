@@ -5,6 +5,7 @@
   <title>360° WebXR Viewer</title>
   <script src="https://cdn.jsdelivr.net/npm/aframe@1.7.0/dist/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/aframe-extras@6.1.1/dist/aframe-extras.min.js"></script>
+  <script src="/stereo-sbs.js"></script>
   <style>
     body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
     #file-input { position: absolute; top: 10px; left: 10px; z-index: 1000; }
@@ -52,6 +53,11 @@
 
     <a-sky id="sky" src="#imageAsset" visible="false" segments-height=50 segments-width=100></a-sky>
     <a-videosphere id="video-sphere" src="#videoAsset" loop="true" visible="false"></a-videosphere>
+    <a-entity id="stereo-sphere"
+              geometry="primitive: sphere; radius: 2.0; segmentsWidth: 100; segmentsHeight: 50"
+              position="0 0 0"
+              visible="false"
+              stereo-sbs="monoEye: left"></a-entity>
   </a-scene>
 
   <script>
@@ -63,8 +69,10 @@
     const sceneEl = document.querySelector('a-scene');
     const skyEl = document.getElementById('sky');
     const videoSphere = document.getElementById('video-sphere');
+    const stereoSphere = document.getElementById('stereo-sphere');
     const imageAsset = document.getElementById('imageAsset');
     const videoAsset = document.getElementById('videoAsset');
+    let currentDirInfo = null; // holds info from folder (.info.json)
 
     // Toggle play/pause
     function togglePlayPause() {
@@ -81,11 +89,21 @@
     // Load image or video
     function loadMedia(src, isVideo) {
       fileInput.style.display = 'none';
+      const isVR180 = currentDirInfo && currentDirInfo.type === 'vr180';
+
       if (isVideo) {
         imageAsset.removeAttribute('src');
         skyEl.setAttribute('visible', 'false');
         videoAsset.setAttribute('src', src);
-        videoSphere.setAttribute('visible', 'true');
+        if (isVR180) {
+          // Use stereo-sbs component for VR180 video
+          stereoSphere.setAttribute('stereo-sbs', 'src: #videoAsset; monoEye: left; halfTurn: true');
+          stereoSphere.setAttribute('visible', 'true');
+          videoSphere.setAttribute('visible', 'false');
+        } else {
+          videoSphere.setAttribute('visible', 'true');
+          stereoSphere.setAttribute('visible', 'false');
+        }
         playPauseBtn.style.display = 'block';
         seekBar.style.display = 'block';
         videoAsset.addEventListener('loadedmetadata', () => { seekBar.max = videoAsset.duration; });
@@ -97,63 +115,66 @@
         videoAsset.pause();
         videoAsset.removeAttribute('src');
         videoSphere.setAttribute('visible', 'false');
+        if (isVR180) {
+          // Use stereo-sbs for VR180 image
+          stereoSphere.setAttribute('stereo-sbs', 'src: #imageAsset; monoEye: left; halfTurn: true');
+          stereoSphere.setAttribute('visible', 'true');
+        } else {
+          stereoSphere.setAttribute('visible', 'false');
+        }
 //       skyEl.setAttribute('visible', 'false');
         imageAsset.setAttribute('src', src);
         imageAsset.addEventListener('load', () => {
-          // 画像読み込み後にスカイへ反映し、アスペクト比に合わせてトリミング（cover）
-          skyEl.setAttribute('src', '#imageAsset');
+          if (!isVR180) {
+            // 非VR180: a-skyに反映（カバー調整）
+            skyEl.setAttribute('src', '#imageAsset');
 
-          const replaceSkyTexture = () => {
-            const mesh = skyEl.getObject3D('mesh');
-            if (!(mesh && mesh.material)) return false;
-            const THREE = AFRAME.THREE;
-            const newTex = new THREE.Texture(imageAsset);
-            // カラースペース/フィルタ設定（安定のためミップマップ無し・線形）
-            if (THREE.SRGBColorSpace) {
-              newTex.colorSpace = THREE.SRGBColorSpace;
-            } else if (THREE.sRGBEncoding) {
-              newTex.encoding = THREE.sRGBEncoding;
+            const replaceSkyTexture = () => {
+              const mesh = skyEl.getObject3D('mesh');
+              if (!(mesh && mesh.material)) return false;
+              const THREE = AFRAME.THREE;
+              const newTex = new THREE.Texture(imageAsset);
+              if (THREE.SRGBColorSpace) {
+                newTex.colorSpace = THREE.SRGBColorSpace;
+              } else if (THREE.sRGBEncoding) {
+                newTex.encoding = THREE.sRGBEncoding;
+              }
+              newTex.minFilter = THREE.LinearFilter;
+              newTex.magFilter = THREE.LinearFilter;
+              newTex.generateMipmaps = false;
+              newTex.flipY = true;
+              newTex.wrapS = THREE.ClampToEdgeWrapping;
+              newTex.wrapT = THREE.ClampToEdgeWrapping;
+
+              const iw = imageAsset.naturalWidth || (newTex.image && newTex.image.width) || 0;
+              const ih = imageAsset.naturalHeight || (newTex.image && newTex.image.height) || 1;
+              const A = iw / ih;
+              const D = 2; // 2:1
+              let rx = 1, ry = 1, ox = 0, oy = 0;
+              if (A > D) { rx = D / A; ox = (1 - rx) / 2; }
+              else if (A < D) { ry = A / D; oy = (1 - ry) / 2; }
+              newTex.repeat.set(rx, ry);
+              newTex.offset.set(ox, oy);
+              newTex.needsUpdate = true;
+
+              if (mesh.material.map && mesh.material.map.dispose) {
+                try { mesh.material.map.dispose(); } catch (e) {}
+              }
+              mesh.material.map = newTex;
+              mesh.material.needsUpdate = true;
+              return true;
+            };
+
+            if (!replaceSkyTexture()) {
+              const onReady = () => { replaceSkyTexture(); };
+              skyEl.addEventListener('materialtextureloaded', onReady, { once: true });
             }
-            newTex.minFilter = THREE.LinearFilter;
-            newTex.magFilter = THREE.LinearFilter;
-            newTex.generateMipmaps = false;
-            newTex.flipY = true; // a-sky 用は上下が正しくなるように true
-            newTex.wrapS = THREE.ClampToEdgeWrapping;
-            newTex.wrapT = THREE.ClampToEdgeWrapping;
 
-            // アスペクト比に応じた repeat/offset（cover）
-            const iw = imageAsset.naturalWidth || (newTex.image && newTex.image.width) || 0;
-            const ih = imageAsset.naturalHeight || (newTex.image && newTex.image.height) || 1;
-            const A = iw / ih;    // 画像のアスペクト比
-            const D = 2;          // equirectangular の期待比（2:1）
-            let rx = 1, ry = 1, ox = 0, oy = 0;
-            if (A > D) {
-              rx = D / A; // 横をトリミング
-              ox = (1 - rx) / 2;
-            } else if (A < D) {
-              ry = A / D; // 縦をトリミング
-              oy = (1 - ry) / 2;
-            }
-            newTex.repeat.set(rx, ry);
-            newTex.offset.set(ox, oy);
-            newTex.needsUpdate = true;
-
-            // 既存テクスチャを破棄して差し替え
-            if (mesh.material.map && mesh.material.map.dispose) {
-              try { mesh.material.map.dispose(); } catch (e) {}
-            }
-            mesh.material.map = newTex;
-            mesh.material.needsUpdate = true;
-            return true;
-          };
-
-          // 既にメッシュ/マテリアルがあるなら即時差し替え、なければイベント待ち
-          if (!replaceSkyTexture()) {
-            const onReady = () => { replaceSkyTexture(); };
-            skyEl.addEventListener('materialtextureloaded', onReady, { once: true });
+            skyEl.setAttribute('visible', 'true');
+          } else {
+            // VR180画像: stereo-sphereを使用
+            skyEl.setAttribute('visible', 'false');
           }
-
-          skyEl.setAttribute('visible', 'true');
         }, { once: true });
         playPauseBtn.style.display = 'none';
         seekBar.style.display = 'none';
@@ -164,6 +185,7 @@
     fileInput.addEventListener('change', e => {
       const file = e.target.files[0];
       if (!file) return;
+      currentDirInfo = null;
       loadMedia(URL.createObjectURL(file), file.type.startsWith('video/'));
     });
 
@@ -171,7 +193,8 @@
     window.addEventListener('load', () => {
       const query = window.location.search.substring(1);
       if (query) {
-        loadMedia(query, /\.(mp4|webm|ogg)$/i.test(qupsery));
+        currentDirInfo = null;
+        loadMedia(query, /\.(mp4|webm|ogg)$/i.test(query));
       }
     });
 
@@ -215,6 +238,7 @@
 
         // update info overlay
         const infoEl = document.getElementById('folder-info');
+        currentDirInfo = info || null;
         if (info) {
           infoEl.textContent = JSON.stringify({ path: relPath, info }, null, 2);
           infoEl.style.display = 'block';
@@ -245,6 +269,7 @@
         this.sceneEl = this.el.sceneEl;
         this.skyEl = this.sceneEl.querySelector('#sky');
         this.videoSphere = this.sceneEl.querySelector('#video-sphere');
+        this.stereoSphere = this.sceneEl.querySelector('#stereo-sphere');
         this.togglePlayPause = function() {
           if (!videoAsset.src) return;
           if (videoAsset.paused) {
@@ -273,7 +298,7 @@
         const horizThreshold = 0.1;
         const vertThreshold = 0.02;
         if (Math.abs(deltaX) > horizThreshold && Math.abs(deltaY) < vertThreshold) {
-          const targetEl = this.skyEl.getAttribute('visible') ? this.skyEl : this.videoSphere;
+          const targetEl = this.skyEl.getAttribute('visible') ? this.skyEl : (this.videoSphere.getAttribute('visible') ? this.videoSphere : this.stereoSphere);
           const rotation = targetEl.getAttribute('rotation');
           rotation.y += (deltaX > 0 ? -30 : 30);
           targetEl.setAttribute('rotation', rotation);
@@ -296,6 +321,7 @@
       this.sceneEl = this.el.sceneEl;
       this.skyEl = this.sceneEl.querySelector('#sky');
       this.videoSphere = this.sceneEl.querySelector('#video-sphere');
+      this.stereoSphere = this.sceneEl.querySelector('#stereo-sphere');
       this.el.addEventListener('axismove', this.onAxisMove.bind(this));
       this.el.addEventListener('triggerdown', this.onTriggerDown.bind(this));
     },
@@ -313,7 +339,7 @@
       this.prevAxis = [...axis];
     },
     rotateBy: function(deg) {
-      const targetEl = this.skyEl.getAttribute('visible') ? this.skyEl : this.videoSphere;
+      const targetEl = this.skyEl.getAttribute('visible') ? this.skyEl : (this.videoSphere.getAttribute('visible') ? this.videoSphere : this.stereoSphere);
       const rotation = targetEl.getAttribute('rotation');
       targetEl.setAttribute('rotation', { x: rotation.x, y: rotation.y + deg, z: rotation.z });
     },
