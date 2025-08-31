@@ -81,15 +81,18 @@ app.get('/api/files', async (req, res) => {
 
  // 選択ファイルリスト受信用エンドポイント
  app.post('/api/select', (req, res) => {
-  const files = req.body;
-  console.log('Selected files:', files);
+  const body = req.body;
+  // 後方互換: 配列だけ送られてきた場合に包む
+  const payload = Array.isArray(body) ? { files: body } : body;
+  const files = payload.files || [];
+  console.log('Selected files:', files, 'info:', payload.info, 'path:', payload.path);
   // WebSocket通知
   wss.clients.forEach(client => {
     if (client.readyState === WebSocket.OPEN) {
-      client.send(JSON.stringify(files));
+      client.send(JSON.stringify(payload));
     }
   });
-  res.json({ success: true, files });
+  res.json({ success: true, ...payload });
 });
 
 const options = {

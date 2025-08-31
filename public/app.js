@@ -118,10 +118,11 @@ const currentInfoEl = document.getElementById('currentInfo');
             state.selected.add(full);
             render();
             const arr = Array.from(state.selected);
+            const payload = { files: arr, info: state.info, path: state.path };
             fetch('/api/select', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(arr)
+              body: JSON.stringify(payload)
             })
               .then(res => res.json())
               .then(data => {
@@ -163,10 +164,11 @@ const currentInfoEl = document.getElementById('currentInfo');
 
   selectBtn.addEventListener('click', () => {
     const arr = Array.from(state.selected);
+    const payload = { files: arr, info: state.info, path: state.path };
     fetch('/api/select', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(arr)
+      body: JSON.stringify(payload)
     })
       .then(res => res.json())
       .then(data => {

@@ -29,6 +29,7 @@
   <input type="file" id="file-input" accept="image/*,video/*" />
   <button id="play-pause-btn">Play</button>
   <input type="range" id="seek-bar" min="0" max="100" step="0.1" value="0" />
+  <pre id="folder-info" style="position:absolute; right:10px; top:10px; z-index:1000; background:rgba(0,0,0,0.5); color:#fff; padding:8px; margin:0; max-width:40vw; max-height:40vh; overflow:auto; font-size:12px; display:none"></pre>
 
   <a-scene background="color:#88c" embedded vr-mode-ui="enabled: true" isMobile="false">
     <a-assets>
@@ -194,13 +195,38 @@
         log('接続エラー');
       };
       ws.onmessage = e => {
-        const files = JSON.parse(e.data);
-        if (files.length === 0) {
+        let payload;
+        try {
+          payload = JSON.parse(e.data);
+        } catch (_) {
+          payload = e.data;
+        }
 
+        let files = [];
+        let info = null;
+        let relPath = '';
+        if (Array.isArray(payload)) {
+          files = payload;
+        } else if (payload && typeof payload === 'object') {
+          files = Array.isArray(payload.files) ? payload.files : [];
+          info = payload.info || null;
+          relPath = payload.path || '';
+        }
+
+        // update info overlay
+        const infoEl = document.getElementById('folder-info');
+        if (info) {
+          infoEl.textContent = JSON.stringify({ path: relPath, info }, null, 2);
+          infoEl.style.display = 'block';
         } else {
-          console.log(files)
-          const p = baseUrl + files[0] 
-          loadMedia(p, /\.(mp4|webm|ogg)$/i.test(p)) 
+          infoEl.textContent = '';
+          infoEl.style.display = 'none';
+        }
+
+        if (files && files.length > 0) {
+          console.log('Selected via WS:', files, info);
+          const p = baseUrl + files[0];
+          loadMedia(p, /\.(mp4|webm|ogg)$/i.test(p));
         }
       };
       ws.onclose = () => {
