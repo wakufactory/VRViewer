@@ -97,7 +97,7 @@
         videoAsset.setAttribute('src', src);
         if (isVR180) {
           // Use stereo-sbs component for VR180 video
-          stereoSphere.setAttribute('stereo-sbs', 'src: #videoAsset; monoEye: left; halfTurn: true');
+          stereoSphere.setAttribute('stereo-sbs', 'src: #videoAsset; monoEye: left; halfTurn: false');
           stereoSphere.setAttribute('visible', 'true');
           videoSphere.setAttribute('visible', 'false');
         } else {

@@ -24,11 +24,19 @@
       this.material = new THREE.ShaderMaterial({
         uniforms: this.uniforms,
         vertexShader: `
+          varying vec2 vUv;
+          void main(){
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          uniform sampler2D map;
           uniform int uEye; // 0: left, 1: right, 2: mono(=left)
           uniform int uHalfRot; // 0/1 rotate the half by 180°
-          varying vec2 vUvStereo;
+          varying vec2 vUv;
           void main(){
-            vec2 uv2 = uv;
+            vec2 uv2 = vUv;
             if (uHalfRot == 1) {
               uv2.x = fract(uv2.x + 0.5);
             }
@@ -39,15 +47,8 @@
               // left eye (or mono) uses left half of texture; black out opposite sphere half
               uv2.x = uv2.x <= 0.5 ? -1. : uv2.x;
             }
-            vUvStereo = vec2(1.0 - uv2.x, 1.0 - uv2.y);
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-          }
-        `,
-        fragmentShader: `
-          uniform sampler2D map;
-          varying vec2 vUvStereo;
-          void main(){
-            gl_FragColor = vUvStereo.x >= 1.0 ? vec4(0.0, 0.0, 0.0, 1.0) : texture2D(map, vUvStereo);
+            vec2 uvStereo = vec2(1.0 - uv2.x, 1.0 - uv2.y);
+            gl_FragColor = uvStereo.x >= 1.0 ? vec4(0.0, 0.0, 0.0, 1.0) : texture2D(map, uvStereo);
           }
         `,
         side: THREE.DoubleSide
