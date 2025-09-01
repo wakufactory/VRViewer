@@ -87,9 +87,11 @@
     }
 
     // Load image or video
-    function loadMedia(src, isVideo) {
+    // filename: original file name (used to detect _sbs for VR180)
+    function loadMedia(src, isVideo, filename) {
       fileInput.style.display = 'none';
-      const isVR180 = currentDirInfo && currentDirInfo.type === 'vr180';
+      const nameForDetect = filename || src || '';
+      const isVR180 = (currentDirInfo && currentDirInfo.type === 'vr180') || /_sbs\./i.test(nameForDetect);
 
       if (isVideo) {
         imageAsset.removeAttribute('src');
@@ -186,15 +188,55 @@
       const file = e.target.files[0];
       if (!file) return;
       currentDirInfo = null;
-      loadMedia(URL.createObjectURL(file), file.type.startsWith('video/'));
+      // Use original file name for _sbs detection
+      loadMedia(URL.createObjectURL(file), file.type.startsWith('video/'), file.name);
     });
 
     // URL query handler
     window.addEventListener('load', () => {
-      const query = window.location.search.substring(1);
-      if (query) {
-        currentDirInfo = null;
-        loadMedia(query, /\.(mp4|webm|ogg)$/i.test(query));
+      const raw = window.location.search;
+      if (!raw || raw.length <= 1) return;
+
+      // Support both legacy `?path/to/file.ext` and key-value like `?path/to/file.jpg&type=vr180`.
+      // Also accept explicit keys: src=, file=, path=
+      const search = raw.substring(1);
+
+      let srcPath = '';
+      let info = {};
+
+      if (search.includes('=')) {
+        // Parse key-value pairs and also allow a leading bare path as a key with empty value
+        const usp = new URLSearchParams(search);
+        // Prefer explicit keys if present
+        srcPath = usp.get('src') || usp.get('file') || usp.get('path') || '';
+        if (!srcPath) {
+          // Look for first entry with empty value (e.g., ?data/a.jpg&type=vr180)
+          for (const [k, v] of usp.entries()) {
+            if (v === '' && k) { srcPath = k; break; }
+          }
+        }
+        // Build info object from remaining params
+        for (const [k, v] of usp.entries()) {
+          if (k === 'src' || k === 'file' || k === 'path') continue;
+          // Skip the synthetic bare-path param (empty value)
+          if (v === '' && k === srcPath) continue;
+          info[k] = v;
+        }
+      } else {
+        // Legacy: whole query is the path
+        srcPath = search;
+      }
+
+      if (srcPath) {
+        currentDirInfo = Object.keys(info).length ? info : null;
+        const fname = srcPath.split('/').pop();
+        loadMedia(srcPath, /\.(mp4|webm|ogg)$/i.test(srcPath), fname);
+        // Optional: show info if provided
+        const infoEl = document.getElementById('folder-info');
+        if (infoEl && currentDirInfo) {
+          infoEl.style.display = 'block';
+          try { infoEl.textContent = JSON.stringify(currentDirInfo, null, 2); } catch (_) {}
+        }
       }
     });
 
@@ -250,7 +292,8 @@
         if (files && files.length > 0) {
           console.log('Selected via WS:', files, info);
           const p = baseUrl + files[0];
-          loadMedia(p, /\.(mp4|webm|ogg)$/i.test(p));
+          const fname = files[0].split('/').pop();
+          loadMedia(p, /\.(mp4|webm|ogg)$/i.test(p), fname);
         }
       };
       ws.onclose = () => {
