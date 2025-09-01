@@ -70,7 +70,7 @@ const currentInfoEl = document.getElementById('currentInfo');
 
   function render() {
     currentPathEl.textContent = state.path || '/';
-    currentInfoEl.textContent = state.info ? JSON.stringify(state.info, null, 2) : '';
+    currentInfoEl.textContent = state.info ? '['+state.info.type+']' : '';
     entriesEl.innerHTML = '';
 
     const sortedFolders = sortItems(state.folders);
@@ -100,7 +100,7 @@ const currentInfoEl = document.getElementById('currentInfo');
       nameTd.appendChild(document.createTextNode(entry.name));
       if (entry.isFolder && entry.info) {
         const infoSpan = document.createElement('span');
-        infoSpan.textContent = ' ' + JSON.stringify(entry.info);
+        infoSpan.textContent = ' [' + entry.info.type + ']';
         nameTd.appendChild(infoSpan);
       }
       const dateTd = document.createElement('td');
