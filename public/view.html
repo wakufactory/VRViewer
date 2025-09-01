@@ -192,39 +192,39 @@
       loadMedia(URL.createObjectURL(file), file.type.startsWith('video/'), file.name);
     });
 
-    // URL query handler
+    // URL query handler and conditional WS connect
     window.addEventListener('load', () => {
       const raw = window.location.search;
-      if (!raw || raw.length <= 1) return;
-
       // Support both legacy `?path/to/file.ext` and key-value like `?path/to/file.jpg&type=vr180`.
       // Also accept explicit keys: src=, file=, path=
-      const search = raw.substring(1);
+      const search = (raw && raw.length > 1) ? raw.substring(1) : '';
 
       let srcPath = '';
       let info = {};
 
-      if (search.includes('=')) {
-        // Parse key-value pairs and also allow a leading bare path as a key with empty value
-        const usp = new URLSearchParams(search);
-        // Prefer explicit keys if present
-        srcPath = usp.get('src') || usp.get('file') || usp.get('path') || '';
-        if (!srcPath) {
-          // Look for first entry with empty value (e.g., ?data/a.jpg&type=vr180)
-          for (const [k, v] of usp.entries()) {
-            if (v === '' && k) { srcPath = k; break; }
+      if (search) {
+        if (search.includes('=')) {
+          // Parse key-value pairs and also allow a leading bare path as a key with empty value
+          const usp = new URLSearchParams(search);
+          // Prefer explicit keys if present
+          srcPath = usp.get('src') || usp.get('file') || usp.get('path') || '';
+          if (!srcPath) {
+            // Look for first entry with empty value (e.g., ?data/a.jpg&type=vr180)
+            for (const [k, v] of usp.entries()) {
+              if (v === '' && k) { srcPath = k; break; }
+            }
           }
+          // Build info object from remaining params
+          for (const [k, v] of usp.entries()) {
+            if (k === 'src' || k === 'file' || k === 'path') continue;
+            // Skip the synthetic bare-path param (empty value)
+            if (v === '' && k === srcPath) continue;
+            info[k] = v;
+          }
+        } else {
+          // Legacy: whole query is the path
+          srcPath = search;
         }
-        // Build info object from remaining params
-        for (const [k, v] of usp.entries()) {
-          if (k === 'src' || k === 'file' || k === 'path') continue;
-          // Skip the synthetic bare-path param (empty value)
-          if (v === '' && k === srcPath) continue;
-          info[k] = v;
-        }
-      } else {
-        // Legacy: whole query is the path
-        srcPath = search;
       }
 
       if (srcPath) {
@@ -237,6 +237,10 @@
           infoEl.style.display = 'block';
           try { infoEl.textContent = JSON.stringify(currentDirInfo, null, 2); } catch (_) {}
         }
+        // When a file is specified via query, do not connect to WS
+      } else {
+        // No file specified via query; connect to WS server
+        if (typeof connect === 'function') connect();
       }
     });
 
@@ -301,7 +305,6 @@
         setTimeout(connect, 1000);
       };
     }
-    connect();
 
     // A-Frameコンポーネント：ハンドトラッキングpinch操作の統合
     AFRAME.registerComponent('pinch-handler', {
