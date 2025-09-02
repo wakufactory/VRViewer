@@ -15,6 +15,7 @@ VR機器は、MetaQuest と VisionPro を想定しています。
 - ピンチ操作によるフリックでの視点回転  
 - WebSocket で外部フォルダ監視および自動更新  
 - 画像・動画ファイルのサムネイル表示  
+- VR180（SBS）画像・動画の表示に対応  
 
 ## 前提条件
 - Node.js と npm がインストールされていること  
@@ -55,6 +56,24 @@ VR機器は、MetaQuest と VisionPro を想定しています。
   ```
   https://<server-ip>:<port>/view.html?path/to/file.jpg
   ```
+
+### VR180（SBS）表示について
+- 対応するSBSソース: 左右が横並び（Side-by-Side）になっているVR180画像/動画。
+- 検出方法は以下の通りです。
+  - ファイル名に「_sbs」が含まれる場合（例: `myphoto_sbs.jpg`, `movie_sbs.mp4`）はVR180として表示します。
+  - フォルダに `.info.json` を置き、その中で `{"type":"vr180"}` を指定すると、そのフォルダ内のファイルをVR180として扱います。
+  - ビューワーURLに `type=vr180` を付けても指定可能です（例: `view.html?data/path/to/file.jpg&type=vr180` あるいは `view.html?src=data/path/to/file.jpg&type=vr180`）。
+
+#### `.info.json` の例
+対象フォルダ配下に `.info.json` を配置してください（`config.json` の `rootFolder` 配下）。
+
+```json
+{
+  "type": "vr180"
+}
+```
+
+UI上ではフォルダ名の右側に `[vr180]` と表示され、`view.html` ではSBS用のステレオ表示でレンダリングされます。
 
 ## ファイル構成
 ```
