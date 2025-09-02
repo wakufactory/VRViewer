@@ -35,7 +35,7 @@
   <a-scene background="color:#88c" embedded vr-mode-ui="enabled: true" isMobile="false">
     <a-assets>
       <img id="imageAsset" crossorigin="anonymous" />
-      <video id="videoAsset" crossorigin="anonymous" webkit-playsinline playsinline loop="false"></video>
+      <video id="videoAsset" crossorigin="anonymous" webkit-playsinline playsinline  loop="false"></video>
     </a-assets>
     <a-entity id="camrig" rotation="0 180 0">
       <a-entity camera look-controls position="0 1.6 0"></a-entity>
@@ -99,7 +99,8 @@
         videoAsset.setAttribute('src', src);
         if (isVR180) {
           // Use stereo-sbs component for VR180 video
-          stereoSphere.setAttribute('stereo-sbs', 'src: #videoAsset; monoEye: left; halfTurn: false');
+          // halfTurn true to bring the VR180 hemisphere to the front, matching still-image behavior
+          stereoSphere.setAttribute('stereo-sbs', 'src: #videoAsset; monoEye: left; halfTurn: true');
           stereoSphere.setAttribute('visible', 'true');
           videoSphere.setAttribute('visible', 'false');
         } else {
@@ -355,7 +356,8 @@
       },
       onPinchEnd: function() {
         if (this.startX === null) return;
-        if (this.videoSphere.getAttribute('visible') && !this.flicked) {
+        // Toggle play/pause on tap-like pinch end if not a horizontal flick
+        if (!this.flicked && videoAsset && videoAsset.src) {
           this.togglePlayPause();
         }
         this.startX = null;
@@ -369,6 +371,7 @@
       this.videoSphere = this.sceneEl.querySelector('#video-sphere');
       this.stereoSphere = this.sceneEl.querySelector('#stereo-sphere');
       this.el.addEventListener('axismove', this.onAxisMove.bind(this));
+      // Support both A-Frame controller events and WebXR generic events
       this.el.addEventListener('triggerdown', this.onTriggerDown.bind(this));
     },
     onAxisMove: function(evt) {

@@ -92,6 +92,8 @@
           tex.minFilter = THREE.LinearFilter;
           tex.magFilter = THREE.LinearFilter;
           tex.generateMipmaps = false;
+          // Align orientation handling with images; shader flips Y, so disable WebGL unpack flip here
+          tex.flipY = false;
           tex.needsUpdate = true;
           // VideoTexture updates automatically as the video plays
           return tex;
