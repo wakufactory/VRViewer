@@ -91,7 +91,7 @@
     function loadMedia(src, isVideo, filename) {
       fileInput.style.display = 'none';
       const nameForDetect = filename || src || '';
-      const isVR180 = (currentDirInfo && currentDirInfo.type === 'vr180') || /_sbs\./i.test(nameForDetect);
+      const isVR180 = (currentDirInfo && currentDirInfo.type === 'vr180') || /_sbs\.|VR180/i.test(nameForDetect);
 
       if (isVideo) {
         imageAsset.removeAttribute('src');
@@ -314,9 +314,15 @@
         this.startY = null;
         this.flicked = false;
         this.sceneEl = this.el.sceneEl;
+        // Camera reference for gaze direction checks
+        this.camera = this.sceneEl && this.sceneEl.camera ? this.sceneEl.camera : null;
         this.skyEl = this.sceneEl.querySelector('#sky');
         this.videoSphere = this.sceneEl.querySelector('#video-sphere');
         this.stereoSphere = this.sceneEl.querySelector('#stereo-sphere');
+        // Config: front-of-gaze cone and distance thresholds
+        this.frontAngleDeg = 45;    // within +/- 45 degrees from gaze
+        this.minDist = 0.15;        // meters from eyes
+        this.maxDist = 0.8;         // meters from eyes
         this.togglePlayPause = function() {
           if (!videoAsset.src) return;
           if (videoAsset.paused) {
@@ -330,6 +336,48 @@
         this.el.addEventListener('pinchstarted', this.onPinchStart.bind(this));
         this.el.addEventListener('pinchmoved', this.onPinchMove.bind(this));
         this.el.addEventListener('pinchended', this.onPinchEnd.bind(this));
+      },
+      // Hand must be in front of gaze within angle/dist thresholds
+      isHandInFrontRange: function() {
+        return true ;
+        const THREE = AFRAME.THREE;
+        if (!this.el || !this.el.object3D) return false;
+        const handObj = this.el.object3D;
+
+        const camPos = new THREE.Vector3();
+        const gazeDir = new THREE.Vector3();
+
+        // Prefer WebXR camera when presenting; fallback to A-Frame camera entity
+        const renderer = this.sceneEl && this.sceneEl.renderer;
+        const xr = renderer && renderer.xr;
+        if (xr && xr.isPresenting) {
+          const xrCam = xr.getCamera(); // ArrayCamera or XR-aware camera
+          // Extract world position and forward (-Z) from matrix
+          camPos.setFromMatrixPosition(xrCam.matrixWorld);
+          gazeDir.set(0, 0, -1).transformDirection(xrCam.matrixWorld); // normalized
+        } else if (this.sceneEl && this.sceneEl.camera) {
+          const camObj = this.sceneEl.camera;
+          camObj.updateMatrixWorld && camObj.updateMatrixWorld(true);
+          camPos.copy(camObj.getWorldPosition(new THREE.Vector3()));
+          gazeDir.copy(camObj.getWorldDirection(new THREE.Vector3()));
+        } else if (this.camera) {
+          const camObj = this.camera;
+          camObj.updateMatrixWorld && camObj.updateMatrixWorld(true);
+          camPos.copy(camObj.getWorldPosition(new THREE.Vector3()));
+          gazeDir.copy(camObj.getWorldDirection(new THREE.Vector3()));
+        } else {
+          return false;
+        }
+
+        const handPos = handObj.getWorldPosition(new THREE.Vector3());
+        const toHand = handPos.clone().sub(camPos);
+        const dist = toHand.length();
+        if (dist < this.minDist || dist > this.maxDist) return false;
+
+        toHand.normalize();
+        const dot = gazeDir.dot(toHand); // 1: same direction, -1: opposite
+        const cosThreshold = Math.cos(THREE.MathUtils.degToRad(this.frontAngleDeg));
+        return dot >= cosThreshold; // inside cone in front of gaze
       },
       onPinchStart: function(evt) {
         this.startX = evt.detail.position.x;
@@ -357,7 +405,7 @@
       onPinchEnd: function() {
         if (this.startX === null) return;
         // Toggle play/pause on tap-like pinch end if not a horizontal flick
-        if (!this.flicked && videoAsset && videoAsset.src) {
+        if (!this.flicked && videoAsset && videoAsset.src && this.isHandInFrontRange()) {
           this.togglePlayPause();
         }
         this.startX = null;
