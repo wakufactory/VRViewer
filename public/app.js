@@ -28,8 +28,10 @@ const currentInfoEl = document.getElementById('currentInfo');
   sortFieldEl.value = state.sortField;
   sortOrderEl.value = state.sortOrder;
 
+  const basePath = location.pathname.replace(/\/[^\/]*$/, '');
+
   function fetchData(relPath = '') {
-    fetch(`/api/files?path=${encodeURIComponent(relPath)}`)
+    fetch(`${basePath}/api/files?path=${encodeURIComponent(relPath)}`)
       .then(res => {
         if (!res.ok) {
           throw new Error('Invalid path');
@@ -119,7 +121,7 @@ const currentInfoEl = document.getElementById('currentInfo');
             render();
             const arr = Array.from(state.selected);
             const payload = { files: arr, info: state.info, path: state.path };
-            fetch('/api/select', {
+            fetch(`${basePath}/api/select`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload)
@@ -165,7 +167,7 @@ const currentInfoEl = document.getElementById('currentInfo');
   selectBtn.addEventListener('click', () => {
     const arr = Array.from(state.selected);
     const payload = { files: arr, info: state.info, path: state.path };
-    fetch('/api/select', {
+    fetch(`${basePath}/api/select`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
