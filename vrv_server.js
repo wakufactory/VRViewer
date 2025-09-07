@@ -8,15 +8,19 @@ const WebSocket = require('ws');
 
 const app = express();
 const PORT = config.port;
+// Normalize basePath: always start with '/', no trailing '/' (except root '/')
+let basePath = config.basePath || '/';
+if (!basePath.startsWith('/')) basePath = '/' + basePath;
+if (basePath.length > 1 && basePath.endsWith('/')) basePath = basePath.slice(0, -1);
 
 
- // 静的ファイル配信
- app.use('/data', express.static(path.join(__dirname, 'public', 'data'), { dotfiles: 'allow' }));
- app.use(express.static(path.join(__dirname, 'public')));
+ // 静的ファイル配信（basePath配下に配置）
+ app.use(basePath + '/data', express.static(path.join(__dirname, 'public', 'data'), { dotfiles: 'allow' }));
+ app.use(basePath, express.static(path.join(__dirname, 'public')));
  app.use(express.json());
 
-// JSON API: /api/files?path=<relative path>
-app.get('/api/files', async (req, res) => {
+// JSON API: <basePath>/api/files?path=<relative path>
+app.get(basePath + '/api/files', async (req, res) => {
   try {
     const relPath = req.query.path || '';
     const root = path.resolve(config.rootFolder);
@@ -57,8 +61,9 @@ app.get('/api/files', async (req, res) => {
         folders.push({ name: entry.name, mtime: stats.mtimeMs, info: infoData });
       } else if (entry.isFile() && regex.test(entry.name)) {
         const thumbExists = thumbSet.has(entry.name);
+        const prefix = basePath === '/' ? '' : basePath;
         const thumbUrl = thumbExists
-          ? '/data/' + (relPath ? relPath + '/' : '') + '.thumb/' + encodeURIComponent(entry.name)
+          ? prefix + '/data/' + (relPath ? relPath + '/' : '') + '.thumb/' + encodeURIComponent(entry.name)
           : null;
         files.push({ name: entry.name, mtime: stats.mtimeMs, thumbUrl });
       }
@@ -80,7 +85,7 @@ app.get('/api/files', async (req, res) => {
 
 
  // 選択ファイルリスト受信用エンドポイント
- app.post('/api/select', (req, res) => {
+ app.post(basePath + '/api/select', (req, res) => {
   const body = req.body;
   // 後方互換: 配列だけ送られてきた場合に包む
   const payload = Array.isArray(body) ? { files: body } : body;
@@ -101,7 +106,7 @@ const options = {
 };
 
 const server = https.createServer(options, app);
-const wss = new WebSocket.Server({ server });
+const wss = new WebSocket.Server({ server, path: basePath });
 
 // クライアントからのログ受信
 wss.on('connection', (ws, req) => {
@@ -112,5 +117,5 @@ wss.on('connection', (ws, req) => {
   });
 });
 server.listen(PORT, () => {
-  console.log(`Server running at https://localhost:${PORT}`);
+  console.log(`Server running at https://localhost:${PORT}${basePath}`);
 });

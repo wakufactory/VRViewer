@@ -36,7 +36,7 @@
   function loadMedia(src, isVideo, filename) {
     fileInput.style.display = 'none';
     const nameForDetect = filename || src || '';
-    const isVR180 = (currentDirInfo && currentDirInfo.type === 'vr180') || /_sbs\./i.test(nameForDetect);
+    const isVR180 = (currentDirInfo && currentDirInfo.type === 'vr180') || /_sbs\.|VR180/i.test(nameForDetect);
 
     if (isVideo) {
       imageAsset.removeAttribute('src');
@@ -194,7 +194,9 @@
 
   function connect() {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    ws = new WebSocket(`${proto}://${location.host}`);
+    // Detect basePath from current page (directory of view.html)
+    const basePath = location.pathname.replace(/\/[^\/]*$/, '');
+    ws = new WebSocket(`${proto}://${location.host}${basePath || ''}`);
     ws.onopen = () => { log('接続済み'); };
     ws.onerror = () => { log('接続エラー'); };
     ws.onmessage = e => {
@@ -232,4 +234,3 @@
     };
   }
 })();
-
