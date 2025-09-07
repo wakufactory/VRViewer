@@ -8,18 +8,14 @@ const WebSocket = require('ws');
 
 const app = express();
 const PORT = config.port;
-// Normalize basePath: always start with '/', no trailing '/' (except root '/')
-let basePath = config.basePath || '/';
-if (!basePath.startsWith('/')) basePath = '/' + basePath;
-if (basePath.length > 1 && basePath.endsWith('/')) basePath = basePath.slice(0, -1);
 
 
- // 静的ファイル配信（basePath配下に配置）
- app.use(basePath + '/data', express.static(path.join(__dirname, 'public', 'data'), { dotfiles: 'allow' }));
- app.use(basePath, express.static(path.join(__dirname, 'public')));
+ // 静的ファイル配信
+ app.use('/data', express.static(path.join(__dirname, 'public', 'data'), { dotfiles: 'allow' }));
+ app.use(express.static(path.join(__dirname, 'public')));
  app.use(express.json());
 
-// JSON API: <basePath>/api/files?path=<relative path>
+// JSON API: /api/files?path=<relative path>
 app.get('/api/files', async (req, res) => {
   try {
     const relPath = req.query.path || '';
@@ -61,9 +57,8 @@ app.get('/api/files', async (req, res) => {
         folders.push({ name: entry.name, mtime: stats.mtimeMs, info: infoData });
       } else if (entry.isFile() && regex.test(entry.name)) {
         const thumbExists = thumbSet.has(entry.name);
-        const prefix = basePath === '/' ? '' : basePath;
         const thumbUrl = thumbExists
-          ? prefix + '/data/' + (relPath ? relPath + '/' : '') + '.thumb/' + encodeURIComponent(entry.name)
+          ? '/data/' + (relPath ? relPath + '/' : '') + '.thumb/' + encodeURIComponent(entry.name)
           : null;
         files.push({ name: entry.name, mtime: stats.mtimeMs, thumbUrl });
       }
@@ -106,7 +101,7 @@ const options = {
 };
 
 const server = https.createServer(options, app);
-const wss = new WebSocket.Server({ server, path: basePath });
+const wss = new WebSocket.Server({ server });
 
 // クライアントからのログ受信
 wss.on('connection', (ws, req) => {
@@ -117,5 +112,5 @@ wss.on('connection', (ws, req) => {
   });
 });
 server.listen(PORT, () => {
-  console.log(`Server running at https://localhost:${PORT}${basePath}`);
+  console.log(`Server running at https://localhost:${PORT}`);
 });

@@ -2,6 +2,5 @@
   "rootFolder": "./public/data",
   "fileRegex": "\\.(jpg|jpeg|mp4|webm|JPG|JPEG)$",
   "selectionMode": "single",
-  "port": 3010,
-  "basePath": "/"
+  "port": 3010
 }
