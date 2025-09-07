@@ -38,9 +38,9 @@ VR機器は、MetaQuest と VisionPro を想定しています。
    ```
 4. ブラウザで以下の URL にアクセス  
    - ファイル選択ページ：  
-     `https://localhost:<port><basePath>/ui.html`  
+     `https://localhost:<port>/ui.html`  
    - ビュアーページ：  
-     `https://<server-ip>:<port><basePath>/view.html`
+     `https://<server-ip>:<port>/view.html`
 
 ## 使用方法
 ### 1. ファイル選択ページ (`ui.html`)
@@ -95,14 +95,12 @@ UI上ではフォルダ名の右側に `[vr180]` と表示され、`view.html` �
   "rootFolder": "./data",
   "port": 3010,
   "fileRegex": "\\.(jpg|png|mp4|webm)$",
-  "selectionMode": "single",
-  "basePath": "/"
+  "selectionMode": "single"
 }
 ```
 - `rootFolder`：監視フォルダの相対/絶対パス  
 - `port`：サーバー起動ポート（HTTPS）  
 - `fileRegex`：読み込み対象のファイル拡張子を正規表現で指定  
-- `basePath`：リバースプロキシ配下でサブパスに公開する場合のルート（例：`/vrv`）。ルート直下で運用する場合は `/`。
 
 ## ライセンス
 MIT License
