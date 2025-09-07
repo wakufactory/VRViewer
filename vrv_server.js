@@ -20,7 +20,7 @@ if (basePath.length > 1 && basePath.endsWith('/')) basePath = basePath.slice(0, 
  app.use(express.json());
 
 // JSON API: <basePath>/api/files?path=<relative path>
-app.get(basePath + '/api/files', async (req, res) => {
+app.get('/api/files', async (req, res) => {
   try {
     const relPath = req.query.path || '';
     const root = path.resolve(config.rootFolder);
@@ -85,7 +85,7 @@ app.get(basePath + '/api/files', async (req, res) => {
 
 
  // 選択ファイルリスト受信用エンドポイント
- app.post(basePath + '/api/select', (req, res) => {
+ app.post('/api/select', (req, res) => {
   const body = req.body;
   // 後方互換: 配列だけ送られてきた場合に包む
   const payload = Array.isArray(body) ? { files: body } : body;

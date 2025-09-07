@@ -196,7 +196,7 @@
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     // Detect basePath from current page (directory of view.html)
     const basePath = location.pathname.replace(/\/[^\/]*$/, '');
-    ws = new WebSocket(`${proto}://${location.host}${basePath || ''}`);
+    ws = new WebSocket(`${proto}://${location.host}${basePath || ''}/`);
     ws.onopen = () => { log('接続済み'); };
     ws.onerror = () => { log('接続エラー'); };
     ws.onmessage = e => {
