@@ -11,6 +11,7 @@
   const skyEl = document.getElementById('sky');
   const videoSphere = document.getElementById('video-sphere');
   const stereoSphere = document.getElementById('stereo-sphere');
+  const imagePlane = document.getElementById('image-plane');
   const imageAsset = document.getElementById('imageAsset');
   const videoAsset = document.getElementById('videoAsset');
 
@@ -37,19 +38,26 @@
     fileInput.style.display = 'none';
     const nameForDetect = filename || src || '';
     const isVR180 = (currentDirInfo && currentDirInfo.type === 'vr180') || /_sbs\.|VR180/i.test(nameForDetect);
+    const isVR360 = (currentDirInfo && currentDirInfo.type === 'vr360');
+
+    // Reset visibility before switching
+    skyEl.setAttribute('visible', 'false');
+    videoSphere.setAttribute('visible', 'false');
+    stereoSphere.setAttribute('visible', 'false');
+    if (imagePlane) imagePlane.setAttribute('visible', 'false');
 
     if (isVideo) {
       imageAsset.removeAttribute('src');
-      skyEl.setAttribute('visible', 'false');
       videoAsset.setAttribute('src', src);
       if (isVR180) {
         // Use stereo-sbs component for VR180 video
         stereoSphere.setAttribute('stereo-sbs', 'src: #videoAsset; monoEye: left; halfTurn: true');
         stereoSphere.setAttribute('visible', 'true');
-        videoSphere.setAttribute('visible', 'false');
-      } else {
+      } else if (isVR360) {
         videoSphere.setAttribute('visible', 'true');
-        stereoSphere.setAttribute('visible', 'false');
+      } else {
+        // Non-VR video: keep simple support with videosphere for now
+        videoSphere.setAttribute('visible', 'true');
       }
       playPauseBtn.style.display = 'block';
       seekBar.style.display = 'block';
@@ -64,18 +72,21 @@
     } else {
       videoAsset.pause();
       videoAsset.removeAttribute('src');
-      videoSphere.setAttribute('visible', 'false');
       if (isVR180) {
         // Use stereo-sbs for VR180 image
         stereoSphere.setAttribute('stereo-sbs', 'src: #imageAsset; monoEye: left; halfTurn: true');
         stereoSphere.setAttribute('visible', 'true');
+      } else if (isVR360) {
+        // VR360 image -> a-sky
+        skyEl.setAttribute('visible', 'true');
       } else {
-        stereoSphere.setAttribute('visible', 'false');
+        // Flat image -> plane (aspect-correct)
+        if (imagePlane) imagePlane.setAttribute('visible', 'true');
       }
       imageAsset.setAttribute('src', src);
       imageAsset.addEventListener('load', () => {
-        if (!isVR180) {
-          // 非VR180: a-skyに反映（カバー調整）
+        if (isVR360) {
+          // VR360: a-sky に反映（2:1 カバー調整）
           skyEl.setAttribute('src', '#imageAsset');
 
           const replaceSkyTexture = () => {
@@ -85,8 +96,6 @@
             const newTex = new THREE.Texture(imageAsset);
             if (THREE.SRGBColorSpace) {
               newTex.colorSpace = THREE.SRGBColorSpace;
-            } else if (THREE.sRGBEncoding) {
-              newTex.encoding = THREE.sRGBEncoding;
             }
             newTex.minFilter = THREE.LinearFilter;
             newTex.magFilter = THREE.LinearFilter;
@@ -118,10 +127,45 @@
             const onReady = () => { replaceSkyTexture(); };
             skyEl.addEventListener('materialtextureloaded', onReady, { once: true });
           }
-
-          skyEl.setAttribute('visible', 'true');
-        } else {
-          skyEl.setAttribute('visible', 'false');
+        } else if (!isVR180) {
+          // 平面画像: アスペクトを維持してplaneサイズを調整（最大辺≈2m）
+          const iw = imageAsset.naturalWidth || 1;
+          const ih = imageAsset.naturalHeight || 1;
+          const aspect = iw / ih;
+          // 高さを基準に横幅を計算（常に高さ一定）
+          const h = 3; // 基準高さ（m）
+          const w = h * aspect;
+          if (imagePlane) {
+            imagePlane.setAttribute('geometry', `primitive: plane; width: ${w}; height: ${h}`);
+            // Force-refresh texture so repeated 2D changes update reliably
+            try {
+              const THREE = AFRAME.THREE;
+              const mesh = imagePlane.getObject3D('mesh');
+              if (mesh && mesh.material) {
+                const mat = mesh.material;
+                if (mat.map && mat.map.dispose) { try { mat.map.dispose(); } catch(e){} }
+                const tex = new THREE.Texture(imageAsset);
+                if (THREE.SRGBColorSpace) { tex.colorSpace = THREE.SRGBColorSpace; }
+                tex.minFilter = THREE.LinearFilter;
+                tex.magFilter = THREE.LinearFilter;
+                tex.generateMipmaps = false;
+                // For standard 2D plane rendering, texture Y should be flipped
+                // so the image is not upside-down.
+                tex.flipY = true;
+                tex.wrapS = THREE.ClampToEdgeWrapping;
+                tex.wrapT = THREE.ClampToEdgeWrapping;
+                tex.needsUpdate = true;
+                mat.map = tex;
+                mat.needsUpdate = true;
+              } else {
+                // Fallback to resetting material src which also triggers update
+                imagePlane.setAttribute('material', 'src: #imageAsset; shader: flat; side: double');
+              }
+            } catch (_) {
+              imagePlane.setAttribute('material', 'src: #imageAsset; shader: flat; side: double');
+            }
+            imagePlane.setAttribute('visible', 'true');
+          }
         }
       }, { once: true });
       playPauseBtn.style.display = 'none';
