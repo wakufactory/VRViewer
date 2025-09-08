@@ -58,6 +58,13 @@
               position="0 0 0"
               visible="false"
               stereo-sbs="monoEye: left"></a-entity>
+    <!-- Stereo SBS flat plane for 2D SBS content -->
+    <a-entity id="stereo-plane"
+              geometry="primitive: plane; width: 1; height: 1"
+              position="0 1.2 2.5"
+              rotation="0 180 0"
+              visible="false"
+              stereo-sbs="monoEye: left; planeMode: true"></a-entity>
     <!-- Flat image plane for non-VR content -->
     <a-entity id="image-plane"
               geometry="primitive: plane; width: 1; height: 1"

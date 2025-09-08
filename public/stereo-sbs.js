@@ -8,51 +8,60 @@
     schema: {
       src: { type: 'selector' },
       monoEye: { type: 'string', default: 'left' }, // 'left' or 'right'
-      halfTurn: { type: 'boolean', default: false } // rotate sphere half by 180° for black/visible split
+      halfTurn: { type: 'boolean', default: false }, // rotate sphere half by 180° for black/visible split
+      planeMode: { type: 'boolean', default: false } // true when geometry is a flat plane (map each eye to half without blackout)
     },
     init: function () {
       const THREE = AFRAME.THREE;
       this.mediaEl = this.data.src || null;
       this.disposeFns = [];
 
-      this.uniforms = {
-        uEye: { value: 2 }, // 0: left, 1: right, 2: mono
-        uHalfRot: { value: this.data.halfTurn ? 1 : 0 }, // 0: normal, 1: rotate half by 180°
-        map:  { value: null }
+      this.shader = null;
+      this.currentTexture = null;
+      // Build MeshBasicMaterial and inject custom map sampling
+      this.material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
+      this.material.onBeforeCompile = (shader) => {
+        this.shader = shader;
+        shader.uniforms.uEye = { value: 2 }; // 0: left, 1: right, 2: mono
+        shader.uniforms.uHalfRot = { value: this.data.halfTurn ? 1 : 0 };
+        shader.uniforms.uPlaneMode = { value: this.data.planeMode ? 1 : 0 };
+        // Declare custom uniforms in GLSL
+        shader.fragmentShader = `uniform int uEye;\nuniform int uHalfRot;\nuniform int uPlaneMode;\n` + shader.fragmentShader;
+        shader.fragmentShader = shader.fragmentShader.replace(
+          '#include <map_fragment>',
+          `#ifdef USE_MAP
+             vec2 uvStereo;
+             vec4 texelColor;
+             if (uPlaneMode == 1) {
+               float x = vMapUv.x;
+               if (uEye == 1) {
+                 x = 0.5 + x * 0.5; // right -> right half
+               } else {
+                 x = x * 0.5;      // left/mono -> left half
+               }
+               uvStereo = vec2(x, 1.0 - vMapUv.y);
+               texelColor = texture2D( map, uvStereo );
+             } else {
+               vec2 uv2 = vMapUv;
+               if (uHalfRot == 1) {
+                 uv2.x = fract(uv2.x + 0.5);
+               }
+               if (uEye == 1) {
+                 uv2.x = uv2.x <= 0.5 ? -1. : -0.5 + uv2.x; // right half or blackout
+               } else {
+                 uv2.x = uv2.x <= 0.5 ? -1. : uv2.x;       // left half or blackout
+               }
+               uvStereo = vec2(1.0 - uv2.x, 1.0 - uv2.y);
+               if (uvStereo.x >= 1.0) {
+                 texelColor = vec4(0.0, 0.0, 0.0, 1.0);
+               } else {
+                 texelColor = texture2D( map, uvStereo );
+               }
+             }
+             diffuseColor *= texelColor;
+           #endif`
+        );
       };
-
-      this.material = new THREE.ShaderMaterial({
-        uniforms: this.uniforms,
-        vertexShader: `
-          varying vec2 vUv;
-          void main(){
-            vUv = uv;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-          }
-        `,
-        fragmentShader: `
-          uniform sampler2D map;
-          uniform int uEye; // 0: left, 1: right, 2: mono(=left)
-          uniform int uHalfRot; // 0/1 rotate the half by 180°
-          varying vec2 vUv;
-          void main(){
-            vec2 uv2 = vUv;
-            if (uHalfRot == 1) {
-              uv2.x = fract(uv2.x + 0.5);
-            }
-            if (uEye == 1) {
-              // right eye uses right half of texture; black out opposite sphere half
-              uv2.x = uv2.x <= 0.5 ? -1. : -0.5 + uv2.x;
-            } else {
-              // left eye (or mono) uses left half of texture; black out opposite sphere half
-              uv2.x = uv2.x <= 0.5 ? -1. : uv2.x;
-            }
-            vec2 uvStereo = vec2(1.0 - uv2.x, 1.0 - uv2.y);
-            gl_FragColor = uvStereo.x >= 1.0 ? vec4(0.0, 0.0, 0.0, 1.0) : texture2D(map, uvStereo);
-          }
-        `,
-        side: THREE.DoubleSide
-      });
 
       this.applyMaterial = () => {
         const mesh = this.el.getObject3D('mesh');
@@ -71,9 +80,11 @@
                 // Non-XR: follow monoEye
                 eye = (this.data.monoEye === 'right') ? 1 : 0;
               }
-              this.material.uniforms.uEye.value = eye;
-              // keep half rotation uniform up-to-date
-              this.material.uniforms.uHalfRot.value = this.data.halfTurn ? 1 : 0;
+              if (this.shader && this.shader.uniforms) {
+                this.shader.uniforms.uEye.value = eye;
+                this.shader.uniforms.uHalfRot.value = this.data.halfTurn ? 1 : 0;
+                this.shader.uniforms.uPlaneMode.value = this.data.planeMode ? 1 : 0;
+              }
             };
           }
         });
@@ -92,7 +103,7 @@
           tex.minFilter = THREE.LinearFilter;
           tex.magFilter = THREE.LinearFilter;
           tex.generateMipmaps = false;
-          // Align orientation handling with images; shader flips Y, so disable WebGL unpack flip here
+          // Shader in map_fragment replacement flips Y; keep flipY=false
           tex.flipY = false;
           tex.needsUpdate = true;
           // VideoTexture updates automatically as the video plays
@@ -102,11 +113,13 @@
           if (THREE.SRGBColorSpace) {
             tex.colorSpace = THREE.SRGBColorSpace;
           } else if (THREE.sRGBEncoding) {
+            // Fallback for older three.js versions used by some A-Frame builds
             tex.encoding = THREE.sRGBEncoding;
           }
           tex.minFilter = THREE.LinearFilter;
           tex.magFilter = THREE.LinearFilter;
           tex.generateMipmaps = false;
+          // Shader in map_fragment replacement flips Y; keep flipY=false
           tex.flipY = false;
           tex.needsUpdate = true;
           return tex;
@@ -115,12 +128,16 @@
 
       this.setTextureFromMedia = (el) => {
         if (!el) return;
-        // Dispose old texture
-        if (this.uniforms.map.value && this.uniforms.map.value.dispose) {
-          try { this.uniforms.map.value.dispose(); } catch(e){}
+        // Dispose old texture if any
+        if (this.currentTexture && this.currentTexture.dispose) {
+          try { this.currentTexture.dispose(); } catch(e){}
         }
         const tex = this.makeTextureFromEl(el);
-        this.uniforms.map.value = tex;
+        this.currentTexture = tex;
+        if (this.material) {
+          this.material.map = tex;
+          this.material.needsUpdate = true;
+        }
       };
 
       // Listen for changes on <img> element's content
@@ -166,9 +183,12 @@
           }
         }
       }
-      if (!oldData || oldData.halfTurn !== this.data.halfTurn) {
-        if (this.material && this.material.uniforms && this.material.uniforms.uHalfRot) {
-          this.material.uniforms.uHalfRot.value = this.data.halfTurn ? 1 : 0;
+      if (this.shader && this.shader.uniforms) {
+        if (!oldData || oldData.halfTurn !== this.data.halfTurn) {
+          this.shader.uniforms.uHalfRot.value = this.data.halfTurn ? 1 : 0;
+        }
+        if (!oldData || oldData.planeMode !== this.data.planeMode) {
+          this.shader.uniforms.uPlaneMode.value = this.data.planeMode ? 1 : 0;
         }
       }
     },
@@ -180,8 +200,8 @@
         });
       }
       if (this.material) this.material.dispose();
-      if (this.uniforms && this.uniforms.map && this.uniforms.map.value) {
-        try { this.uniforms.map.value.dispose(); } catch(e){}
+      if (this.currentTexture && this.currentTexture.dispose) {
+        try { this.currentTexture.dispose(); } catch(e){}
       }
       this.disposeFns.forEach(fn => { try { fn(); } catch(e){} });
       this.disposeFns = [];

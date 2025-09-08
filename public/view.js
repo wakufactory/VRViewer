@@ -11,6 +11,7 @@
   const skyEl = document.getElementById('sky');
   const videoSphere = document.getElementById('video-sphere');
   const stereoSphere = document.getElementById('stereo-sphere');
+  const stereoPlane = document.getElementById('stereo-plane');
   const imagePlane = document.getElementById('image-plane');
   const imageAsset = document.getElementById('imageAsset');
   const videoAsset = document.getElementById('videoAsset');
@@ -33,17 +34,21 @@
     }
   }
 
-  // filename: original file name (used to detect _sbs for VR180)
+  // filename: original file name (used to detect _sbs and VR tags)
   function loadMedia(src, isVideo, filename) {
     fileInput.style.display = 'none';
     const nameForDetect = filename || src || '';
-    const isVR180 = (currentDirInfo && currentDirInfo.type === 'vr180') || /_sbs\.|VR180/i.test(nameForDetect);
+    const isVR180 = (currentDirInfo && /vr180/i.test(currentDirInfo.type || '')) || /VR180/i.test(nameForDetect);
     const isVR360 = (currentDirInfo && currentDirInfo.type === 'vr360');
+    const isSBS2D = (!isVR180 && !isVR360) && (
+      (currentDirInfo && /sbs/i.test(currentDirInfo.type || '')) || /_sbs(?=\.)/i.test(nameForDetect)
+    );
 
     // Reset visibility before switching
     skyEl.setAttribute('visible', 'false');
     videoSphere.setAttribute('visible', 'false');
     stereoSphere.setAttribute('visible', 'false');
+    if (stereoPlane) stereoPlane.setAttribute('visible', 'false');
     if (imagePlane) imagePlane.setAttribute('visible', 'false');
 
     if (isVideo) {
@@ -55,6 +60,29 @@
         stereoSphere.setAttribute('visible', 'true');
       } else if (isVR360) {
         videoSphere.setAttribute('visible', 'true');
+      } else if (isSBS2D) {
+        // 2D SBS video on plane using stereo-sbs in plane mode
+        if (stereoPlane) {
+          stereoPlane.setAttribute('stereo-sbs', 'src: #videoAsset; monoEye: left; planeMode: true');
+          // set size after metadata loads
+          const setVideoPlaneSize = () => {
+            const vw = videoAsset.videoWidth || 0;
+            const vh = videoAsset.videoHeight || 0;
+            if (vw > 0 && vh > 0) {
+              const aspect = (vw / 2) / vh; // half width for SBS
+              const h = 3;
+              const w = h * aspect;
+              stereoPlane.setAttribute('geometry', `primitive: plane; width: ${w}; height: ${h}`);
+            }
+          };
+          // update once metadata is available
+          if (videoAsset.readyState >= 1) setVideoPlaneSize();
+          else videoAsset.addEventListener('loadedmetadata', setVideoPlaneSize, { once: true });
+          stereoPlane.setAttribute('visible', 'true');
+        } else {
+          // fallback to normal videosphere if stereoPlane missing
+          videoSphere.setAttribute('visible', 'true');
+        }
       } else {
         // Non-VR video: keep simple support with videosphere for now
         videoSphere.setAttribute('visible', 'true');
@@ -79,6 +107,9 @@
       } else if (isVR360) {
         // VR360 image -> a-sky
         skyEl.setAttribute('visible', 'true');
+      } else if (isSBS2D) {
+        // 2D SBS image on plane using stereo-sbs in plane mode
+        if (stereoPlane) stereoPlane.setAttribute('visible', 'true');
       } else {
         // Flat image -> plane (aspect-correct)
         if (imagePlane) imagePlane.setAttribute('visible', 'true');
@@ -131,11 +162,16 @@
           // 平面画像: アスペクトを維持してplaneサイズを調整（最大辺≈2m）
           const iw = imageAsset.naturalWidth || 1;
           const ih = imageAsset.naturalHeight || 1;
-          const aspect = iw / ih;
+          const aspect = isSBS2D ? (iw / 2) / ih : (iw / ih);
           // 高さを基準に横幅を計算（常に高さ一定）
           const h = 3; // 基準高さ（m）
           const w = h * aspect;
-          if (imagePlane) {
+          if (isSBS2D && stereoPlane) {
+            // Use stereo plane with shader (no need to set material manually)
+            stereoPlane.setAttribute('geometry', `primitive: plane; width: ${w}; height: ${h}`);
+            stereoPlane.setAttribute('stereo-sbs', 'src: #imageAsset; monoEye: left; planeMode: true');
+            stereoPlane.setAttribute('visible', 'true');
+          } else if (imagePlane) {
             imagePlane.setAttribute('geometry', `primitive: plane; width: ${w}; height: ${h}`);
             // Force-refresh texture so repeated 2D changes update reliably
             try {
@@ -150,7 +186,6 @@
                 tex.magFilter = THREE.LinearFilter;
                 tex.generateMipmaps = false;
                 // For standard 2D plane rendering, texture Y should be flipped
-                // so the image is not upside-down.
                 tex.flipY = true;
                 tex.wrapS = THREE.ClampToEdgeWrapping;
                 tex.wrapT = THREE.ClampToEdgeWrapping;
