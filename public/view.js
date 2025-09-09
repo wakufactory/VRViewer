@@ -10,7 +10,7 @@
   const sceneEl = document.querySelector('a-scene');
   const skyEl = document.getElementById('sky');
   const videoSphere = document.getElementById('video-sphere');
-  const stereoSphere = document.getElementById('stereo-sphere');
+  const vr180Sphere = document.getElementById('vr180-sphere');
   const stereoPlane = document.getElementById('stereo-plane');
   const imagePlane = document.getElementById('image-plane');
   const imageAsset = document.getElementById('imageAsset');
@@ -47,7 +47,8 @@
     // Reset visibility before switching
     skyEl.setAttribute('visible', 'false');
     videoSphere.setAttribute('visible', 'false');
-    stereoSphere.setAttribute('visible', 'false');
+    
+    if (vr180Sphere) vr180Sphere.setAttribute('visible', 'false');
     if (stereoPlane) stereoPlane.setAttribute('visible', 'false');
     if (imagePlane) imagePlane.setAttribute('visible', 'false');
 
@@ -55,9 +56,11 @@
       imageAsset.removeAttribute('src');
       videoAsset.setAttribute('src', src);
       if (isVR180) {
-        // Use stereo-sbs component for VR180 video
-        stereoSphere.setAttribute('stereo-sbs', 'src: #videoAsset; monoEye: left; halfTurn: true');
-        stereoSphere.setAttribute('visible', 'true');
+        // VR180: Use dedicated 180° sphere wedge entity
+        if (vr180Sphere) {
+          vr180Sphere.setAttribute('stereo-sbs', 'src: #videoAsset; monoEye: left; insideSphere: true');
+          vr180Sphere.setAttribute('visible', 'true');
+        }
       } else if (isVR360) {
         videoSphere.setAttribute('visible', 'true');
       } else if (isSBS2D) {
@@ -103,9 +106,11 @@
       imageAsset.setAttribute('src', src);
       imageAsset.addEventListener('load', () => {
         if (isVR180) {
-          // Use stereo-sbs for VR180 image
-          stereoSphere.setAttribute('stereo-sbs', 'src: #imageAsset; monoEye: left; halfTurn: true');
-          stereoSphere.setAttribute('visible', 'true');
+          // VR180: Use dedicated 180° sphere wedge entity
+          if (vr180Sphere) {
+            vr180Sphere.setAttribute('stereo-sbs', 'src: #imageAsset; monoEye: left; insideSphere: true');
+            vr180Sphere.setAttribute('visible', 'true');
+          }
         }
         if (isVR360) {
           // VR360: a-sky に反映（2:1 カバー調整）

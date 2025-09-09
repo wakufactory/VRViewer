@@ -8,8 +8,9 @@
     schema: {
       src: { type: 'selector' },
       monoEye: { type: 'string', default: 'left' }, // 'left' or 'right'
-      halfTurn: { type: 'boolean', default: false }, // rotate sphere half by 180° for black/visible split
-      planeMode: { type: 'boolean', default: false } // true when geometry is a flat plane (map each eye to half without blackout)
+      halfTurn: { type: 'boolean', default: false }, // reserved; not used after refactor
+      planeMode: { type: 'boolean', default: false }, // flat plane mode
+      insideSphere: { type: 'boolean', default: false } // true when texture is viewed from sphere inside (VR180/VR360)
     },
     init: function () {
       const THREE = AFRAME.THREE;
@@ -18,56 +19,10 @@
 
       this.shader = null;
       this.currentTexture = null;
-      // Build MeshBasicMaterial and inject custom map sampling
+      // Build MeshBasicMaterial; keep Three.js standard sampling/color pipeline
       this.material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
       this.material.onBeforeCompile = (shader) => {
-        this.shader = shader;
-        shader.uniforms.uEye = { value: 2 }; // 0: left, 1: right, 2: mono
-        shader.uniforms.uHalfRot = { value: this.data.halfTurn ? 1 : 0 };
-        shader.uniforms.uPlaneMode = { value: this.data.planeMode ? 1 : 0 };
-        shader.uniforms.uIsVideo = { value: (this.mediaEl && this.mediaEl.tagName && this.mediaEl.tagName.toLowerCase() === 'video') ? 1 : 0 };
-        // Declare custom uniforms in GLSL
-        shader.fragmentShader = `uniform int uEye;\nuniform int uHalfRot;\nuniform int uPlaneMode;\nuniform int uIsVideo;\n\nvec3 sRGBToLinear_custom(vec3 c) {\n  vec3 lo = c / 12.92;\n  vec3 hi = pow((c + 0.055) / 1.055, vec3(2.4));\n  vec3 cut = step(vec3(0.04045), c);\n  return mix(lo, hi, cut);\n}\n` + shader.fragmentShader;
-        shader.fragmentShader = shader.fragmentShader.replace(
-          '#include <map_fragment>',
-          `#ifdef USE_MAP
-             vec2 uvStereo;
-             vec4 texelColor;
-             if (uPlaneMode == 1) {
-               float x = vMapUv.x;
-               if (uEye == 1) {
-                 x = 0.5 + x * 0.5; // right -> right half
-               } else {
-                 x = x * 0.5;      // left/mono -> left half
-               }
-               uvStereo = vec2(x, 1.0 - vMapUv.y);
-               texelColor = texture2D( map, uvStereo );
-               if (uIsVideo == 1) {
-                 texelColor.rgb = sRGBToLinear_custom(texelColor.rgb);
-               }
-             } else {
-               vec2 uv2 = vMapUv;
-               if (uHalfRot == 1) {
-                 uv2.x = fract(uv2.x + 0.5);
-               }
-               if (uEye == 1) {
-                 uv2.x = uv2.x <= 0.5 ? -1. : -0.5 + uv2.x; // right half or blackout
-               } else {
-                 uv2.x = uv2.x <= 0.5 ? -1. : uv2.x;       // left half or blackout
-               }
-               uvStereo = vec2(1.0 - uv2.x, 1.0 - uv2.y);
-               if (uvStereo.x >= 1.0) {
-                 texelColor = vec4(0.0, 0.0, 0.0, 1.0);
-                } else {
-                  texelColor = texture2D( map, uvStereo );
-                }
-               if (uIsVideo == 1) {
-                 texelColor.rgb = sRGBToLinear_custom(texelColor.rgb);
-               }
-             }
-             diffuseColor *= texelColor;
-           #endif`
-        );
+        this.shader = shader; // not strictly required now, but kept for potential future tweaks
       };
 
       this.applyMaterial = () => {
@@ -87,13 +42,17 @@
                 // Non-XR: follow monoEye
                 eye = (this.data.monoEye === 'right') ? 1 : 0;
               }
-              if (this.shader && this.shader.uniforms) {
-                this.shader.uniforms.uEye.value = eye;
-                this.shader.uniforms.uHalfRot.value = this.data.halfTurn ? 1 : 0;
-                this.shader.uniforms.uPlaneMode.value = this.data.planeMode ? 1 : 0;
-                // Keep uIsVideo in sync with current media element
-                const isVid = (this.mediaEl && this.mediaEl.tagName && this.mediaEl.tagName.toLowerCase() === 'video') ? 1 : 0;
-                if (this.shader.uniforms.uIsVideo) this.shader.uniforms.uIsVideo.value = isVid;
+              // Adjust texture transform to pick left/right half via repeat/offset.
+              const mat = obj.material;
+              const tex = mat && mat.map;
+              if (tex) {
+                // SBS: use half width; select eye side via offset.x
+                const invert = (!this.data.planeMode) && this.data.insideSphere;
+                const targetOffset = invert
+                  ? ((eye === 1) ? 0.0 : 0.5)  // inside sphere: swap halves
+                  : ((eye === 1) ? 0.5 : 0.0); // plane/regular: normal halves
+                if (tex.offset.x !== targetOffset) tex.offset.x = targetOffset;
+                // Note: changing offset/repeat updates UV transform uniform; no GPU re-upload needed.
               }
             };
           }
@@ -113,8 +72,8 @@
           tex.minFilter = THREE.LinearFilter;
           tex.magFilter = THREE.LinearFilter;
           tex.generateMipmaps = false;
-          // Shader in map_fragment replacement flips Y; keep flipY=false
-          tex.flipY = false;
+          // Use standard color/UV pipeline; for planes keep upright, for spheres A-Frame mapping expects flipY=false
+          tex.flipY = this.data.planeMode ? true : false;
           tex.needsUpdate = true;
           // VideoTexture updates automatically as the video plays
           return tex;
@@ -129,8 +88,8 @@
           tex.minFilter = THREE.LinearFilter;
           tex.magFilter = THREE.LinearFilter;
           tex.generateMipmaps = false;
-          // Shader in map_fragment replacement flips Y; keep flipY=false
-          tex.flipY = false;
+          // Use standard color/UV pipeline; for planes keep upright, for spheres A-Frame mapping expects flipY=false
+          tex.flipY = this.data.planeMode ? true : false;
           tex.needsUpdate = true;
           return tex;
         }
@@ -143,14 +102,21 @@
           try { this.currentTexture.dispose(); } catch(e){}
         }
         const tex = this.makeTextureFromEl(el);
+        // Initialize SBS transform once; per-eye offset is adjusted on render
+        if (tex) {
+          if (tex.repeat.x !== 0.5) tex.repeat.x = 0.5;
+          // Set initial mono view according to monoEye; invert if viewing from sphere inside
+          const invert = (!this.data.planeMode) && this.data.insideSphere;
+          if (invert) {
+            tex.offset.x = (this.data.monoEye === 'right') ? 0.0 : 0.5;
+          } else {
+            tex.offset.x = (this.data.monoEye === 'right') ? 0.5 : 0.0;
+          }
+        }
         this.currentTexture = tex;
         if (this.material) {
           this.material.map = tex;
           this.material.needsUpdate = true;
-        }
-        if (this.shader && this.shader.uniforms && this.shader.uniforms.uIsVideo) {
-          const isVid = (el && el.tagName && el.tagName.toLowerCase() === 'video') ? 1 : 0;
-          this.shader.uniforms.uIsVideo.value = isVid;
         }
       };
 
@@ -196,19 +162,8 @@
             this.setTextureFromMedia(this.mediaEl);
           }
         }
-        if (this.shader && this.shader.uniforms && this.shader.uniforms.uIsVideo) {
-          const isVid = (this.mediaEl && this.mediaEl.tagName && this.mediaEl.tagName.toLowerCase() === 'video') ? 1 : 0;
-          this.shader.uniforms.uIsVideo.value = isVid;
-        }
       }
-      if (this.shader && this.shader.uniforms) {
-        if (!oldData || oldData.halfTurn !== this.data.halfTurn) {
-          this.shader.uniforms.uHalfRot.value = this.data.halfTurn ? 1 : 0;
-        }
-        if (!oldData || oldData.planeMode !== this.data.planeMode) {
-          this.shader.uniforms.uPlaneMode.value = this.data.planeMode ? 1 : 0;
-        }
-      }
+      // No geometry changes needed here after refactor
     },
     remove: function () {
       const mesh = this.el.getObject3D('mesh');

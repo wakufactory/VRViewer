@@ -8,8 +8,11 @@
   function getActiveTarget(sceneEl) {
     const sky = sceneEl.querySelector('#sky');
     const vid = sceneEl.querySelector('#video-sphere');
-    const st  = sceneEl.querySelector('#stereo-sphere');
-    return sky.getAttribute('visible') ? sky : (vid.getAttribute('visible') ? vid : st);
+    const vr180 = sceneEl.querySelector('#vr180-sphere');
+    if (sky && sky.getAttribute('visible')) return sky;
+    if (vid && vid.getAttribute('visible')) return vid;
+    if (vr180 && vr180.getAttribute('visible')) return vr180;
+    return sky || vid || vr180 || sceneEl; // safe fallback
   }
 
   AFRAME.registerComponent('pinch-handler', {
@@ -100,4 +103,3 @@
     }
   });
 })();
-

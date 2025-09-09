@@ -53,11 +53,14 @@
 
     <a-sky id="sky" src="#imageAsset" visible="false" segments-height=50 segments-width=100></a-sky>
     <a-videosphere id="video-sphere" src="#videoAsset" loop="true" visible="false"></a-videosphere>
-    <a-entity id="stereo-sphere"
-              geometry="primitive: sphere; radius: 20; segmentsWidth: 100; segmentsHeight: 50"
+    <!-- Dedicated 180° sphere wedge for VR180 content -->
+    <a-entity id="vr180-sphere"
+              geometry="primitive: sphere; radius: 20; segmentsWidth: 100; segmentsHeight: 50; phiStart: 0; phiLength: 180; thetaStart: 0; thetaLength: 180"
               position="0 0 0"
+              rotation="0 0 0"
+              scale="1 -1 1"
               visible="false"
-              stereo-sbs="monoEye: left"></a-entity>
+              stereo-sbs="monoEye: left; insideSphere: true"></a-entity>
     <!-- Stereo SBS flat plane for 2D SBS content -->
     <a-entity id="stereo-plane"
               geometry="primitive: plane; width: 1; height: 1"
