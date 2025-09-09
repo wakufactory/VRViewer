@@ -12,6 +12,7 @@
   const videoSphere = document.getElementById('video-sphere');
   const vr180Sphere = document.getElementById('vr180-sphere');
   const stereoPlane = document.getElementById('stereo-plane');
+  const videoPlane = document.getElementById('video-plane');
   const imagePlane = document.getElementById('image-plane');
   const imageAsset = document.getElementById('imageAsset');
   const videoAsset = document.getElementById('videoAsset');
@@ -38,11 +39,28 @@
   function loadMedia(src, isVideo, filename) {
     fileInput.style.display = 'none';
     const nameForDetect = filename || src || '';
-    const isVR180 = (currentDirInfo && /vr180/i.test(currentDirInfo.type || '')) || /VR180/i.test(nameForDetect);
-    const isVR360 = (currentDirInfo && currentDirInfo.type === 'vr360');
-    const isSBS2D = (!isVR180 && !isVR360) && (
-      (currentDirInfo && /sbs/i.test(currentDirInfo.type || '')) || /_sbs(?=\.)/i.test(nameForDetect)
-    );
+    // Prefer filename hints over query 'type'
+    const hasVR180Name = /vr180/i.test(nameForDetect);
+    const hasVR360Name = /vr360/i.test(nameForDetect);
+    const hasSBSName = /(?:^|[_-])sbs(?=\.)/i.test(nameForDetect);
+
+    const typeParam = (currentDirInfo && (currentDirInfo.type || '')) || '';
+    const typeParamLC = String(typeParam).toLowerCase();
+    const hasVR180Param = /vr180|180/.test(typeParamLC);
+    const hasVR360Param = typeParamLC === 'vr360' || /(^|\b)360(\b|$)/.test(typeParamLC);
+    const hasSBSParam = /sbs/.test(typeParamLC);
+
+    let mode = null; // 'vr180' | 'vr360' | 'sbs' | null
+    if (hasVR180Name) mode = 'vr180';
+    else if (hasVR360Name) mode = 'vr360';
+    else if (hasSBSName) mode = 'sbs';
+    else if (hasVR180Param) mode = 'vr180';
+    else if (hasVR360Param) mode = 'vr360';
+    else if (hasSBSParam) mode = 'sbs';
+
+    const isVR180 = mode === 'vr180';
+    const isVR360 = mode === 'vr360';
+    const isSBS2D = mode === 'sbs';
 
     // Reset visibility before switching
     skyEl.setAttribute('visible', 'false');
@@ -50,6 +68,7 @@
     
     if (vr180Sphere) vr180Sphere.setAttribute('visible', 'false');
     if (stereoPlane) stereoPlane.setAttribute('visible', 'false');
+    if (videoPlane) videoPlane.setAttribute('visible', 'false');
     if (imagePlane) imagePlane.setAttribute('visible', 'false');
 
     if (isVideo) {
@@ -87,8 +106,28 @@
           videoSphere.setAttribute('visible', 'true');
         }
       } else {
-        // Non-VR video: keep simple support with videosphere for now
-        videoSphere.setAttribute('visible', 'true');
+        // Non-VR video: show flat video plane (default)
+        if (videoPlane) {
+          // set size after metadata loads
+          const setVideoPlaneSize = () => {
+            const vw = videoAsset.videoWidth || 0;
+            const vh = videoAsset.videoHeight || 0;
+            if (vw > 0 && vh > 0) {
+              const aspect = vw / vh;
+              const h = 3;
+              const w = h * aspect;
+              videoPlane.setAttribute('geometry', `primitive: plane; width: ${w}; height: ${h}`);
+            }
+          };
+          if (videoAsset.readyState >= 1) setVideoPlaneSize();
+          else videoAsset.addEventListener('loadedmetadata', setVideoPlaneSize, { once: true });
+          // Ensure material points to current #videoAsset
+          videoPlane.setAttribute('material', 'src: #videoAsset; shader: flat; side: double');
+          videoPlane.setAttribute('visible', 'true');
+        } else {
+          // fallback to videosphere if plane missing
+          videoSphere.setAttribute('visible', 'true');
+        }
       }
       playPauseBtn.style.display = 'block';
       seekBar.style.display = 'block';

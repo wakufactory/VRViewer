@@ -46,11 +46,14 @@
               const mat = obj.material;
               const tex = mat && mat.map;
               if (tex) {
-                // SBS: use half width; select eye side via offset.x
-                const invert = (!this.data.planeMode) && this.data.insideSphere;
-                const targetOffset = invert
-                  ? ((eye === 1) ? 0.0 : 0.5)  // inside sphere: swap halves
-                  : ((eye === 1) ? 0.5 : 0.0); // plane/regular: normal halves
+                // Decide repeat sign by viewing context
+                const useNegRepeat = (!this.data.planeMode) && this.data.insideSphere;
+                const targetRepeat = useNegRepeat ? -0.5 : 0.5;
+                if (tex.repeat.x !== targetRepeat) tex.repeat.x = targetRepeat;
+                // SBS: select half via offset.x (keep halves same; only mirror when insideSphere)
+                const targetOffset = useNegRepeat
+                  ? ((eye === 1) ? 1.0 : 0.5) // right: [1.0..0.5], left: [0.5..0.0]
+                  : ((eye === 1) ? 0.5 : 0.0);
                 if (tex.offset.x !== targetOffset) tex.offset.x = targetOffset;
                 // Note: changing offset/repeat updates UV transform uniform; no GPU re-upload needed.
               }
@@ -104,14 +107,12 @@
         const tex = this.makeTextureFromEl(el);
         // Initialize SBS transform once; per-eye offset is adjusted on render
         if (tex) {
-          if (tex.repeat.x !== 0.5) tex.repeat.x = 0.5;
-          // Set initial mono view according to monoEye; invert if viewing from sphere inside
-          const invert = (!this.data.planeMode) && this.data.insideSphere;
-          if (invert) {
-            tex.offset.x = (this.data.monoEye === 'right') ? 0.0 : 0.5;
-          } else {
-            tex.offset.x = (this.data.monoEye === 'right') ? 0.5 : 0.0;
-          }
+          const useNegRepeat = (!this.data.planeMode) && this.data.insideSphere;
+          tex.repeat.x = useNegRepeat ? -0.5 : 0.5;
+          // Initial mono view according to monoEye; keep half, mirror only if inside sphere
+          tex.offset.x = useNegRepeat
+            ? ((this.data.monoEye === 'right') ? 1.0 : 0.5)
+            : ((this.data.monoEye === 'right') ? 0.5 : 0.0);
         }
         this.currentTexture = tex;
         if (this.material) {

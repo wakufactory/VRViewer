@@ -68,6 +68,13 @@
               rotation="0 180 0"
               visible="false"
               stereo-sbs="monoEye: left; planeMode: true"></a-entity>
+    <!-- Flat video plane for non-VR videos -->
+    <a-entity id="video-plane"
+              geometry="primitive: plane; width: 1; height: 1"
+              material="src: #videoAsset; shader: flat; side: double"
+              position="0 1.2 2.5"
+              rotation="0 180 0"
+              visible="false"></a-entity>
     <!-- Flat image plane for non-VR content -->
     <a-entity id="image-plane"
               geometry="primitive: plane; width: 1; height: 1"
