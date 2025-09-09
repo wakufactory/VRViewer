@@ -25,8 +25,9 @@
         shader.uniforms.uEye = { value: 2 }; // 0: left, 1: right, 2: mono
         shader.uniforms.uHalfRot = { value: this.data.halfTurn ? 1 : 0 };
         shader.uniforms.uPlaneMode = { value: this.data.planeMode ? 1 : 0 };
+        shader.uniforms.uIsVideo = { value: (this.mediaEl && this.mediaEl.tagName && this.mediaEl.tagName.toLowerCase() === 'video') ? 1 : 0 };
         // Declare custom uniforms in GLSL
-        shader.fragmentShader = `uniform int uEye;\nuniform int uHalfRot;\nuniform int uPlaneMode;\n` + shader.fragmentShader;
+        shader.fragmentShader = `uniform int uEye;\nuniform int uHalfRot;\nuniform int uPlaneMode;\nuniform int uIsVideo;\n\nvec3 sRGBToLinear_custom(vec3 c) {\n  vec3 lo = c / 12.92;\n  vec3 hi = pow((c + 0.055) / 1.055, vec3(2.4));\n  vec3 cut = step(vec3(0.04045), c);\n  return mix(lo, hi, cut);\n}\n` + shader.fragmentShader;
         shader.fragmentShader = shader.fragmentShader.replace(
           '#include <map_fragment>',
           `#ifdef USE_MAP
@@ -41,6 +42,9 @@
                }
                uvStereo = vec2(x, 1.0 - vMapUv.y);
                texelColor = texture2D( map, uvStereo );
+               if (uIsVideo == 1) {
+                 texelColor.rgb = sRGBToLinear_custom(texelColor.rgb);
+               }
              } else {
                vec2 uv2 = vMapUv;
                if (uHalfRot == 1) {
@@ -54,8 +58,11 @@
                uvStereo = vec2(1.0 - uv2.x, 1.0 - uv2.y);
                if (uvStereo.x >= 1.0) {
                  texelColor = vec4(0.0, 0.0, 0.0, 1.0);
-               } else {
-                 texelColor = texture2D( map, uvStereo );
+                } else {
+                  texelColor = texture2D( map, uvStereo );
+                }
+               if (uIsVideo == 1) {
+                 texelColor.rgb = sRGBToLinear_custom(texelColor.rgb);
                }
              }
              diffuseColor *= texelColor;
@@ -84,6 +91,9 @@
                 this.shader.uniforms.uEye.value = eye;
                 this.shader.uniforms.uHalfRot.value = this.data.halfTurn ? 1 : 0;
                 this.shader.uniforms.uPlaneMode.value = this.data.planeMode ? 1 : 0;
+                // Keep uIsVideo in sync with current media element
+                const isVid = (this.mediaEl && this.mediaEl.tagName && this.mediaEl.tagName.toLowerCase() === 'video') ? 1 : 0;
+                if (this.shader.uniforms.uIsVideo) this.shader.uniforms.uIsVideo.value = isVid;
               }
             };
           }
@@ -138,6 +148,10 @@
           this.material.map = tex;
           this.material.needsUpdate = true;
         }
+        if (this.shader && this.shader.uniforms && this.shader.uniforms.uIsVideo) {
+          const isVid = (el && el.tagName && el.tagName.toLowerCase() === 'video') ? 1 : 0;
+          this.shader.uniforms.uIsVideo.value = isVid;
+        }
       };
 
       // Listen for changes on <img> element's content
@@ -181,6 +195,10 @@
           } else {
             this.setTextureFromMedia(this.mediaEl);
           }
+        }
+        if (this.shader && this.shader.uniforms && this.shader.uniforms.uIsVideo) {
+          const isVid = (this.mediaEl && this.mediaEl.tagName && this.mediaEl.tagName.toLowerCase() === 'video') ? 1 : 0;
+          this.shader.uniforms.uIsVideo.value = isVid;
         }
       }
       if (this.shader && this.shader.uniforms) {
