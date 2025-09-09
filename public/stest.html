@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>A-Frame Stereo Shader Test</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://cdn.jsdelivr.net/npm/aframe@1.7.0/dist/aframe.min.js"></script>
+  <script src="stereo-sbs.js"></script>
+  <style>
+    html, body { margin: 0; height: 100%; }
+    .hint {
+      position: absolute; z-index: 5; left: 10px; top: 10px;
+      padding: 6px 10px; background: rgba(0,0,0,0.5); color: #fff;
+      font-family: sans-serif; font-size: 13px; border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="hint">VRモードでSBS画像を左右の目に分割表示します。</div>
+
+  <a-scene background="color: #222" renderer="colorManagement:true" vr-mode-ui="enabled: true">
+    <a-assets>
+      <img id="sbsTex" crossorigin="anonymous" src="data/vr/osmo/vr180/20250829_komatuna_sbs.jpg" />
+    </a-assets>
+    <a-entity id="rig">
+      <a-entity camera position="0 1.6 0" look-controls></a-entity>
+    </a-entity>
+
+    <!-- 単一の球にSBSステレオUVシェーダーを適用 -->
+    <a-entity geometry="primitive: sphere; radius: 2.0; segmentsWidth: 100; segmentsHeight: 50"
+              position="0 0.6 0"
+              stereo-sbs="src: #sbsTex; monoEye: left">
+    </a-entity>
+  </a-scene>
+  
+</body>
+</html>

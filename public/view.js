@@ -100,25 +100,17 @@
     } else {
       videoAsset.pause();
       videoAsset.removeAttribute('src');
-      if (isVR180) {
-        // Use stereo-sbs for VR180 image
-        stereoSphere.setAttribute('stereo-sbs', 'src: #imageAsset; monoEye: left; halfTurn: true');
-        stereoSphere.setAttribute('visible', 'true');
-      } else if (isVR360) {
-        // VR360 image -> a-sky
-        skyEl.setAttribute('visible', 'true');
-      } else if (isSBS2D) {
-        // 2D SBS image on plane using stereo-sbs in plane mode
-        if (stereoPlane) stereoPlane.setAttribute('visible', 'true');
-      } else {
-        // Flat image -> plane (aspect-correct)
-        if (imagePlane) imagePlane.setAttribute('visible', 'true');
-      }
       imageAsset.setAttribute('src', src);
       imageAsset.addEventListener('load', () => {
+        if (isVR180) {
+          // Use stereo-sbs for VR180 image
+          stereoSphere.setAttribute('stereo-sbs', 'src: #imageAsset; monoEye: left; halfTurn: true');
+          stereoSphere.setAttribute('visible', 'true');
+        }
         if (isVR360) {
           // VR360: a-sky に反映（2:1 カバー調整）
           skyEl.setAttribute('src', '#imageAsset');
+          skyEl.setAttribute('visible', 'true');
 
           const replaceSkyTexture = () => {
             const mesh = skyEl.getObject3D('mesh');
