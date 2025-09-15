@@ -24,6 +24,25 @@
       width: 100%; height: 100%;
       position: absolute; top: 0; left: 0;
     }
+    /* Custom VR button (recommended way: disable default UI and provide own) */
+    #enter-vr-btn {
+      position: fixed;
+      left: 50%;
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 6vh);
+      transform: translateX(-50%);
+      z-index: 2000;
+      padding: 10px 16px;
+      font-size: 15px;
+      border: none;
+      border-radius: 6px;
+      background: rgba(0,0,0,0.65);
+      color: #fff;
+      backdrop-filter: blur(2px);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      cursor: pointer;
+      display: none; /* shown when XR supported */
+    }
+    #enter-vr-btn:active { transform: translateX(-50%) scale(0.98); }
   </style>
 </head>
 <body>
@@ -32,7 +51,7 @@
   <input type="range" id="seek-bar" min="0" max="100" step="0.1" value="0" />
   <pre id="folder-info" style="position:absolute; right:10px; top:10px; z-index:1000; background:rgba(0,0,0,0.5); color:#fff; padding:8px; margin:0; max-width:40vw; max-height:40vh; overflow:auto; font-size:12px; display:none"></pre>
 
-  <a-scene background="color:#88c" embedded vr-mode-ui="enabled: true" isMobile="false">
+  <a-scene background="color:#88c" embedded xr-mode-ui="enabled:false" isMobile="false">
     <a-assets>
       <img id="imageAsset" crossorigin="anonymous" />
       <video id="videoAsset" crossorigin="anonymous" webkit-playsinline playsinline  loop="false"></video>
@@ -84,8 +103,41 @@
               visible="false"></a-entity>
   </a-scene>
 
+  <!-- Custom VR button -->
+  <button id="enter-vr-btn" aria-label="Enter VR">Enter VR</button>
+
   <script type="module" src="aframe-controls.js"></script>
   <script type="module" src="view.js"></script>
+  <script>
+    (function(){
+      const sceneEl = document.querySelector('a-scene');
+      const btn = document.getElementById('enter-vr-btn');
+      if (!sceneEl || !btn) return;
+
+      function updateVisibility() {
+        if (!('xr' in navigator) || typeof navigator.xr.isSessionSupported !== 'function') {
+          // Show button; A-Frame may still offer magic window or polyfills
+          btn.style.display = 'block';
+          return;
+        }
+        navigator.xr.isSessionSupported('immersive-vr').then((supported) => {
+          btn.style.display = supported ? 'block' : 'none';
+        }).catch(() => { btn.style.display = 'block'; });
+      }
+
+      btn.addEventListener('click', () => {
+        if (sceneEl && typeof sceneEl.enterVR === 'function') {
+          sceneEl.enterVR();
+        }
+      });
+
+      sceneEl.addEventListener('enter-vr', () => { btn.style.display = 'none'; });
+      sceneEl.addEventListener('exit-vr', updateVisibility);
+
+      // Initial state
+      updateVisibility();
+    })();
+  </script>
 
 </body>
 </html>
