@@ -19,6 +19,28 @@
 
   let currentDirInfo = null; // holds info from folder (.info.json)
 
+  // Handle WebGL context loss: exit immersive VR and reload
+  (function attachContextLossHandler() {
+    const onRendererReady = () => {
+      const renderer = sceneEl && sceneEl.renderer;
+      if (!renderer || !renderer.domElement) return;
+      const canvas = renderer.domElement;
+
+      const onLost = (e) => {
+        try { if (e && typeof e.preventDefault === 'function') e.preventDefault(); } catch (_) {}
+        const inXR = !!(renderer.xr && renderer.xr.isPresenting) || (sceneEl && sceneEl.is && sceneEl.is('vr-mode'));
+        // Attempt to exit VR session if presenting, then force reload
+        try { if (inXR && sceneEl && typeof sceneEl.exitVR === 'function') sceneEl.exitVR(); } catch (_) {}
+        setTimeout(() => { try { location.reload(); } catch(_) {} }, inXR ? 150 : 0);
+      };
+
+      canvas.addEventListener('webglcontextlost', onLost, false);
+    };
+
+    if (sceneEl && sceneEl.renderer) onRendererReady();
+    else if (sceneEl) sceneEl.addEventListener('rendererinitialized', onRendererReady, { once: true });
+  })();
+
   // Handlers cached to avoid duplicate listeners
   const onLoadedMetadata = () => { seekBar.max = videoAsset.duration || 0; };
   const onTimeUpdate = () => { seekBar.value = videoAsset.currentTime || 0; };
