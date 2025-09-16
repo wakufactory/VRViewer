@@ -41,6 +41,92 @@
     else if (sceneEl) sceneEl.addEventListener('rendererinitialized', onRendererReady, { once: true });
   })();
 
+  // Hide the 2D mirroring canvas whenever an immersive XR session is active
+  (function manageImmersiveCanvasVisibility() {
+    if (!sceneEl) return;
+
+    let cachedCanvas = null;
+    const getCanvas = () => {
+      if (cachedCanvas && cachedCanvas.isConnected) return cachedCanvas;
+      const c = sceneEl.canvas || (sceneEl.renderer && sceneEl.renderer.domElement) || null;
+      if (c) cachedCanvas = c;
+      return c;
+    };
+
+    const setCanvasVisible = (visible) => {
+      const canvas = getCanvas();
+      if (!canvas) return;
+      console.log('Set canvas visibility:', visible);
+      if (visible) {
+        if (canvas.dataset.prevVisibility !== undefined) {
+          canvas.style.visibility = canvas.dataset.prevVisibility;
+          delete canvas.dataset.prevVisibility;
+        } else {
+          canvas.style.visibility = '';
+        }
+      } else {
+        if (canvas.dataset.prevVisibility === undefined) {
+          canvas.dataset.prevVisibility = canvas.style.visibility || '';
+        }
+        canvas.style.visibility = 'hidden';
+      }
+    };
+
+    const requestSceneRedraw = () => {
+      if (!(sceneEl && sceneEl.renderer && sceneEl.object3D && sceneEl.camera)) return;
+      const renderer = sceneEl.renderer;
+      const sceneObj = sceneEl.object3D;
+      const cameraObj = sceneEl.camera;
+      const schedule = window.requestAnimationFrame
+        ? (fn) => window.requestAnimationFrame(fn)
+        : (fn) => window.setTimeout(fn, 16);
+      const draw = () => {
+        if (!(renderer && sceneObj && cameraObj)) return;
+        if (renderer.xr && renderer.xr.isPresenting) return;
+        try {
+          renderer.render(sceneObj, cameraObj);
+        } catch (err) {
+          console.warn('Failed to redraw scene after immersive exit', err);
+        }
+      };
+      schedule(draw);
+    };
+
+    const isImmersiveMode = (mode) => typeof mode === 'string' && mode.startsWith('immersive');
+    let immersiveActive = false;
+
+    const updateImmersiveState = (active) => {
+      const next = !!active;
+      if (next === immersiveActive) {
+        setCanvasVisible(!next);
+        return;
+      }
+      immersiveActive = next;
+      setCanvasVisible(!next);
+      if (!next) requestSceneRedraw();
+    };
+
+    const handleSessionStart = () => { updateImmersiveState(true); };
+    const handleSessionEnd = () => { updateImmersiveState(false); };
+    
+    const attachRendererListeners = () => {
+      if (!(sceneEl.renderer && sceneEl.renderer.xr)) return;
+      const xr = sceneEl.renderer.xr;
+      xr.addEventListener('sessionstart', handleSessionStart);
+      xr.addEventListener('sessionend', handleSessionEnd);
+      if (typeof xr.isPresenting === 'boolean' && xr.isPresenting) {
+        updateImmersiveState(true);
+      }
+    };
+
+    if (sceneEl.renderer) attachRendererListeners();
+    else sceneEl.addEventListener('rendererinitialized', attachRendererListeners, { once: true });
+
+    // Fallback for frameworks that signal exit without sessionend
+    sceneEl.addEventListener('enter-vr', handleSessionStart);
+    sceneEl.addEventListener('exit-vr', handleSessionEnd);
+  })();
+
   // Handlers cached to avoid duplicate listeners
   const onLoadedMetadata = () => { seekBar.max = videoAsset.duration || 0; };
   const onTimeUpdate = () => { seekBar.value = videoAsset.currentTime || 0; };
@@ -49,9 +135,11 @@
   function togglePlayPause() {
     if (!videoAsset.src) return;
     if (videoAsset.paused) {
+      console.log("play") ;
       videoAsset.play();
       playPauseBtn.textContent = 'Pause';
     } else {
+      console.log("pause") ;
       videoAsset.pause();
       playPauseBtn.textContent = 'Play';
     }
