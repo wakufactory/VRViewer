@@ -26,7 +26,6 @@ app.get('/api/files', async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
     const entries = await fsp.readdir(absPath, { withFileTypes: true });
-    console.log(entries);
     const folders = [];
     const files = [];
     const regex = new RegExp(config.fileRegex);
@@ -36,7 +35,6 @@ app.get('/api/files', async (req, res) => {
     const thumbDir = path.join(absPath, '.thumb');
     try {
       const thumbEntries = await fsp.readdir(thumbDir, { withFileTypes: true });
-      console.log(thumbEntries);
       for (const thumbEntry of thumbEntries) {
         const thumbName = thumbEntry.name;
         const normalized = thumbName.normalize('NFC');
