@@ -26,16 +26,24 @@ app.get('/api/files', async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
     const entries = await fsp.readdir(absPath, { withFileTypes: true });
+    console.log(entries);
     const folders = [];
     const files = [];
     const regex = new RegExp(config.fileRegex);
 
     // サムネイルフォルダ検出
-    let thumbSet = new Set();
+    let thumbMap = new Map();
     const thumbDir = path.join(absPath, '.thumb');
     try {
-      const thumbEntries = await fsp.readdir(thumbDir);
-      thumbSet = new Set(thumbEntries);
+      const thumbEntries = await fsp.readdir(thumbDir, { withFileTypes: true });
+      console.log(thumbEntries);
+      for (const thumbEntry of thumbEntries) {
+        const thumbName = thumbEntry.name;
+        const normalized = thumbName.normalize('NFC');
+        if (!thumbMap.has(normalized)) {
+          thumbMap.set(normalized, thumbName);
+        }
+      }
     } catch (err) {
       // サムネイルフォルダが無い場合は無視
     }
@@ -56,9 +64,24 @@ app.get('/api/files', async (req, res) => {
         }
         folders.push({ name: entry.name, mtime: stats.mtimeMs, info: infoData });
       } else if (entry.isFile() && regex.test(entry.name)) {
-        const thumbExists = thumbSet.has(entry.name);
-        const thumbUrl = thumbExists
-          ? '/data/' + (relPath ? relPath + '/' : '') + '.thumb/' + encodeURIComponent(entry.name)
+        let thumbFile = null;
+        if (entry.name.toLowerCase().endsWith('.mp4')) {
+          const jpgName = path.parse(entry.name).name + '.jpg';
+          const normalizedJpg = jpgName.normalize('NFC');
+          const matchedJpg = thumbMap.get(normalizedJpg);
+          if (matchedJpg) {
+            thumbFile = matchedJpg;
+          }
+        }
+        if (!thumbFile) {
+          const normalizedName = entry.name.normalize('NFC');
+          const sameNameThumb = thumbMap.get(normalizedName);
+          if (sameNameThumb) {
+            thumbFile = sameNameThumb;
+          }
+        }
+        const thumbUrl = thumbFile
+          ? '/data/' + (relPath ? relPath + '/' : '') + '.thumb/' + encodeURIComponent(thumbFile)
           : null;
         files.push({ name: entry.name, mtime: stats.mtimeMs, thumbUrl });
       }
