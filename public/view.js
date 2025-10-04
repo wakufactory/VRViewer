@@ -1,25 +1,231 @@
-// Main viewer logic as ES module
 (() => {
-  // UI elements
+  // UIまわりの主要DOM参照
   const fileInput = document.getElementById('file-input');
   const playPauseBtn = document.getElementById('play-pause-btn');
   const seekBar = document.getElementById('seek-bar');
   const infoEl = document.getElementById('folder-info');
 
-  // A-Frame elements
   const sceneEl = document.querySelector('a-scene');
-  const skyEl = document.getElementById('sky');
-  const videoSphere = document.getElementById('video-sphere');
-  const vr180Sphere = document.getElementById('vr180-sphere');
-  const stereoPlane = document.getElementById('stereo-plane');
-  const videoPlane = document.getElementById('video-plane');
-  const imagePlane = document.getElementById('image-plane');
   const imageAsset = document.getElementById('imageAsset');
   const videoAsset = document.getElementById('videoAsset');
 
-  let currentDirInfo = null; // holds info from folder (.info.json)
+  // A-Frameに必要な要素が揃っていない場合は初期化を中断
+  if (!sceneEl || !imageAsset || !videoAsset) {
+    console.warn('[view] Missing required viewer elements; aborting bootstrap');
+    return;
+  }
 
-  // Handle WebGL context loss: exit immersive VR and reload
+  // メディア用エンティティを動的に管理するためのコンテナ
+  const viewRoot = document.createElement('a-entity');
+  viewRoot.id = 'media-view-root';
+  sceneEl.appendChild(viewRoot);
+
+  // ビューモードごとにESモジュールを遅延ロードするテーブル
+  const viewModuleLoaders = {
+    'vr360': () => import('./view-modules/vr360.js'),
+    'vr180': () => import('./view-modules/vr180.js'),
+    'sbs': () => import('./view-modules/sbs.js'),
+    'flat-video': () => import('./view-modules/flat-video.js'),
+    'flat-image': () => import('./view-modules/flat-image.js')
+  };
+
+  // 既に生成したビューアダプタはキャッシュして使い回す
+  const viewModuleCache = new Map();
+  let currentViewAdapter = null;
+  let currentViewKey = null;
+  let currentDirInfo = null;
+
+  const toLower = (value) => (value == null ? '' : String(value).toLowerCase());
+
+  // ファイル名・メタ情報から表示モードを推測
+  const detectMode = ({ filename, info }) => {
+    const nameForDetect = filename || '';
+    const hasVR180Name = /vr180/i.test(nameForDetect);
+    const hasVR360Name = /vr360/i.test(nameForDetect);
+    const hasSBSName = /(?:^|[_-])sbs(?:$|[_-]|\.)/i.test(nameForDetect);
+
+    const typeParamLC = toLower(info && info.type);
+    const hasVR180Param = /vr180|180/.test(typeParamLC);
+    const hasVR360Param = typeParamLC === 'vr360' || /(^|\b)360(\b|$)/.test(typeParamLC);
+    const hasSBSParam = /sbs/.test(typeParamLC);
+
+    if (hasVR180Name) return 'vr180';
+    if (hasVR360Name) return 'vr360';
+    if (hasSBSName) return 'sbs';
+    if (hasVR180Param) return 'vr180';
+    if (hasVR360Param) return 'vr360';
+    if (hasSBSParam) return 'sbs';
+    return null;
+  };
+
+  // ビュー種別に応じて読み込むモジュールのキーを決定
+  const resolveViewModuleKey = ({ isVideo, filename, info }) => {
+    const mode = detectMode({ filename, info });
+    if (mode === 'vr180') return { key: 'vr180', mode };
+    if (mode === 'vr360') return { key: 'vr360', mode };
+    if (mode === 'sbs') return { key: 'sbs', mode };
+    return { key: isVideo ? 'flat-video' : 'flat-image', mode: null };
+  };
+
+  // 指定キーのビューアダプタを取得（未ロードならモジュールを動的 import）
+  const ensureViewAdapter = async (key) => {
+    let adapter = viewModuleCache.get(key);
+    if (adapter) return adapter;
+
+    const loader = viewModuleLoaders[key];
+    if (!loader) throw new Error(`Unsupported view module: ${key}`);
+
+    let moduleExports;
+    try {
+      moduleExports = await loader();
+    } catch (err) {
+      console.error(`[view] Failed to load module "${key}"`, err);
+      throw err;
+    }
+
+    const factory = typeof moduleExports.createView === 'function'
+      ? moduleExports.createView
+      : moduleExports.default;
+
+    if (typeof factory !== 'function') {
+      throw new Error(`View module "${key}" does not export a factory function`);
+    }
+
+    // ファクトリからアダプタを生成してキャッシュ
+    adapter = factory({ sceneEl, viewRoot, videoAsset, imageAsset });
+    viewModuleCache.set(key, adapter);
+    return adapter;
+  };
+
+  // 現在のビューを切り替えて表示処理を呼び出す
+  const activateView = async (key, params) => {
+    const adapter = await ensureViewAdapter(key);
+
+    if (currentViewAdapter && currentViewAdapter !== adapter) {
+      try {
+        currentViewAdapter.hide?.();
+      } catch (err) {
+        console.warn('[view] Failed to hide previous view adapter', err);
+      }
+    }
+
+    currentViewAdapter = adapter;
+    currentViewKey = key;
+
+    if (typeof adapter.show === 'function') {
+      await adapter.show(params);
+    }
+  };
+
+  const onLoadedMetadata = () => {
+    if (seekBar) {
+      seekBar.max = videoAsset.duration || 0;
+    }
+  };
+
+  const onTimeUpdate = () => {
+    if (seekBar && !Number.isNaN(videoAsset.currentTime)) {
+      seekBar.value = videoAsset.currentTime || 0;
+    }
+  };
+
+  const onSeekInput = () => {
+    if (!seekBar) return;
+    try {
+      const next = Number(seekBar.value);
+      if (!Number.isNaN(next)) {
+        videoAsset.currentTime = next;
+      }
+    } catch (_) {}
+  };
+
+  // 再生UIが二重登録されないよう毎回バインドし直す
+  const rebindVideoUi = () => {
+    videoAsset.removeEventListener('loadedmetadata', onLoadedMetadata);
+    videoAsset.removeEventListener('timeupdate', onTimeUpdate);
+    if (seekBar) seekBar.removeEventListener('input', onSeekInput);
+
+    videoAsset.addEventListener('loadedmetadata', onLoadedMetadata);
+    videoAsset.addEventListener('timeupdate', onTimeUpdate);
+    if (seekBar) seekBar.addEventListener('input', onSeekInput);
+  };
+
+  // 動画でない場合にリスナを解除
+  const releaseVideoUi = () => {
+    videoAsset.removeEventListener('loadedmetadata', onLoadedMetadata);
+    videoAsset.removeEventListener('timeupdate', onTimeUpdate);
+    if (seekBar) seekBar.removeEventListener('input', onSeekInput);
+  };
+
+  // 動画再生UIの表示更新
+  const showVideoUi = () => {
+    if (playPauseBtn) {
+      playPauseBtn.style.display = 'block';
+      playPauseBtn.textContent = videoAsset.paused ? 'Play' : 'Pause';
+    }
+    if (seekBar) {
+      seekBar.style.display = 'block';
+      seekBar.value = 0;
+      seekBar.max = videoAsset.duration || 0;
+    }
+  };
+
+  // 静止画などではUIを非表示に戻す
+  const hideVideoUi = () => {
+    if (playPauseBtn) {
+      playPauseBtn.style.display = 'none';
+      playPauseBtn.textContent = 'Play';
+    }
+    if (seekBar) {
+      seekBar.style.display = 'none';
+      seekBar.value = 0;
+      seekBar.max = 0;
+    }
+  };
+
+  const togglePlayPause = () => {
+    if (!videoAsset.src) return;
+    if (videoAsset.paused) {
+      const playPromise = videoAsset.play();
+      if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch(err => console.warn('[view] Failed to play video', err));
+      }
+      if (playPauseBtn) playPauseBtn.textContent = 'Pause';
+    } else {
+      videoAsset.pause();
+      if (playPauseBtn) playPauseBtn.textContent = 'Play';
+    }
+  };
+
+  // メディア読み込みとビュー切替のメイン処理
+  const loadMedia = async (src, isVideo, filename) => {
+    if (!src) return;
+    if (fileInput) fileInput.style.display = 'none';
+
+    const { key, mode } = resolveViewModuleKey({ isVideo, filename, info: currentDirInfo });
+
+    if (isVideo) {
+      imageAsset.removeAttribute('src');
+      videoAsset.setAttribute('src', src);
+      rebindVideoUi();
+      showVideoUi();
+      if (playPauseBtn) playPauseBtn.textContent = 'Play';
+    } else {
+      videoAsset.pause();
+      videoAsset.removeAttribute('src');
+      imageAsset.setAttribute('src', src);
+      releaseVideoUi();
+      hideVideoUi();
+    }
+
+    try {
+      await activateView(key, { src, filename, isVideo, mode, info: currentDirInfo });
+    } catch (err) {
+      console.error('[view] Failed to activate view', err);
+    }
+  };
+
+  // WebGLコンテキスト喪失時に画面をリロードして復旧
   (function attachContextLossHandler() {
     const onRendererReady = () => {
       const renderer = sceneEl && sceneEl.renderer;
@@ -29,7 +235,6 @@
       const onLost = (e) => {
         try { if (e && typeof e.preventDefault === 'function') e.preventDefault(); } catch (_) {}
         const inXR = !!(renderer.xr && renderer.xr.isPresenting) || (sceneEl && sceneEl.is && sceneEl.is('vr-mode'));
-        // Attempt to exit VR session if presenting, then force reload
         try { if (inXR && sceneEl && typeof sceneEl.exitVR === 'function') sceneEl.exitVR(); } catch (_) {}
         setTimeout(() => { try { location.reload(); } catch(_) {} }, inXR ? 150 : 0);
       };
@@ -41,7 +246,7 @@
     else if (sceneEl) sceneEl.addEventListener('rendererinitialized', onRendererReady, { once: true });
   })();
 
-  // Hide the 2D mirroring canvas whenever an immersive XR session is active
+  // VRセッション中は2Dキャンバスを隠し、終了後に復帰させる
   (function manageImmersiveCanvasVisibility() {
     if (!sceneEl) return;
 
@@ -56,7 +261,6 @@
     const setCanvasVisible = (visible) => {
       const canvas = getCanvas();
       if (!canvas) return;
-      console.log('Set canvas visibility:', visible);
       if (visible) {
         if (canvas.dataset.prevVisibility !== undefined) {
           canvas.style.visibility = canvas.dataset.prevVisibility;
@@ -92,23 +296,23 @@
       schedule(draw);
     };
 
-    const isImmersiveMode = (mode) => typeof mode === 'string' && mode.startsWith('immersive');
-    let immersiveActive = false;
-
-    const updateImmersiveState = (active) => {
-      const next = !!active;
-      if (next === immersiveActive) {
+    const updateImmersiveState = (() => {
+      let immersiveActive = false;
+      return (active) => {
+        const next = !!active;
+        if (next === immersiveActive) {
+          setCanvasVisible(!next);
+          return;
+        }
+        immersiveActive = next;
         setCanvasVisible(!next);
-        return;
-      }
-      immersiveActive = next;
-      setCanvasVisible(!next);
-      if (!next) requestSceneRedraw();
-    };
+        if (!next) requestSceneRedraw();
+      };
+    })();
 
     const handleSessionStart = () => { updateImmersiveState(true); };
     const handleSessionEnd = () => { updateImmersiveState(false); };
-    
+
     const attachRendererListeners = () => {
       if (!(sceneEl.renderer && sceneEl.renderer.xr)) return;
       const xr = sceneEl.renderer.xr;
@@ -122,256 +326,34 @@
     if (sceneEl.renderer) attachRendererListeners();
     else sceneEl.addEventListener('rendererinitialized', attachRendererListeners, { once: true });
 
-    // Fallback for frameworks that signal exit without sessionend
     sceneEl.addEventListener('enter-vr', handleSessionStart);
     sceneEl.addEventListener('exit-vr', handleSessionEnd);
   })();
 
-  // Handlers cached to avoid duplicate listeners
-  const onLoadedMetadata = () => { seekBar.max = videoAsset.duration || 0; };
-  const onTimeUpdate = () => { seekBar.value = videoAsset.currentTime || 0; };
-  const onSeekInput = () => { try { videoAsset.currentTime = Number(seekBar.value) || 0; } catch(_) {} };
-
-  function togglePlayPause() {
-    if (!videoAsset.src) return;
-    if (videoAsset.paused) {
-      console.log("play") ;
-      videoAsset.play();
-      playPauseBtn.textContent = 'Pause';
-    } else {
-      console.log("pause") ;
-      videoAsset.pause();
-      playPauseBtn.textContent = 'Play';
-    }
-  }
-
-  // filename: original file name (used to detect _sbs and VR tags)
-  function loadMedia(src, isVideo, filename) {
-    fileInput.style.display = 'none';
-    const nameForDetect = filename || src || '';
-    // Prefer filename hints over query 'type'
-    const hasVR180Name = /vr180/i.test(nameForDetect);
-    const hasVR360Name = /vr360/i.test(nameForDetect);
-    const hasSBSName = /(?:^|[_-])sbs(?=\.)/i.test(nameForDetect);
-
-    const typeParam = (currentDirInfo && (currentDirInfo.type || '')) || '';
-    const typeParamLC = String(typeParam).toLowerCase();
-    const hasVR180Param = /vr180|180/.test(typeParamLC);
-    const hasVR360Param = typeParamLC === 'vr360' || /(^|\b)360(\b|$)/.test(typeParamLC);
-    const hasSBSParam = /sbs/.test(typeParamLC);
-
-    let mode = null; // 'vr180' | 'vr360' | 'sbs' | null
-    if (hasVR180Name) mode = 'vr180';
-    else if (hasVR360Name) mode = 'vr360';
-    else if (hasSBSName) mode = 'sbs';
-    else if (hasVR180Param) mode = 'vr180';
-    else if (hasVR360Param) mode = 'vr360';
-    else if (hasSBSParam) mode = 'sbs';
-
-    const isVR180 = mode === 'vr180';
-    const isVR360 = mode === 'vr360';
-    const isSBS2D = mode === 'sbs';
-
-    // Reset visibility before switching
-    skyEl.setAttribute('visible', 'false');
-    videoSphere.setAttribute('visible', 'false');
-    
-    if (vr180Sphere) vr180Sphere.setAttribute('visible', 'false');
-    if (stereoPlane) stereoPlane.setAttribute('visible', 'false');
-    if (videoPlane) videoPlane.setAttribute('visible', 'false');
-    if (imagePlane) imagePlane.setAttribute('visible', 'false');
-
-    if (isVideo) {
-      imageAsset.removeAttribute('src');
-      videoAsset.setAttribute('src', src);
-      if (isVR180) {
-        // VR180: Use dedicated 180° sphere wedge entity
-        if (vr180Sphere) {
-          vr180Sphere.setAttribute('stereo-sbs', 'src: #videoAsset; monoEye: left; insideSphere: true');
-          vr180Sphere.setAttribute('visible', 'true');
-        }
-      } else if (isVR360) {
-        videoSphere.setAttribute('visible', 'true');
-      } else if (isSBS2D) {
-        // 2D SBS video on plane using stereo-sbs in plane mode
-        if (stereoPlane) {
-          stereoPlane.setAttribute('stereo-sbs', 'src: #videoAsset; monoEye: left; planeMode: true');
-          // set size after metadata loads
-          const setVideoPlaneSize = () => {
-            const vw = videoAsset.videoWidth || 0;
-            const vh = videoAsset.videoHeight || 0;
-            if (vw > 0 && vh > 0) {
-              const aspect = (vw / 2) / vh; // half width for SBS
-              const h = 3;
-              const w = h * aspect;
-              stereoPlane.setAttribute('geometry', `primitive: plane; width: ${w}; height: ${h}`);
-            }
-          };
-          // update once metadata is available
-          if (videoAsset.readyState >= 1) setVideoPlaneSize();
-          else videoAsset.addEventListener('loadedmetadata', setVideoPlaneSize, { once: true });
-          stereoPlane.setAttribute('visible', 'true');
-        } else {
-          // fallback to normal videosphere if stereoPlane missing
-          videoSphere.setAttribute('visible', 'true');
-        }
-      } else {
-        // Non-VR video: show flat video plane (default)
-        if (videoPlane) {
-          // set size after metadata loads
-          const setVideoPlaneSize = () => {
-            const vw = videoAsset.videoWidth || 0;
-            const vh = videoAsset.videoHeight || 0;
-            if (vw > 0 && vh > 0) {
-              const aspect = vw / vh;
-              const h = 3;
-              const w = h * aspect;
-              videoPlane.setAttribute('geometry', `primitive: plane; width: ${w}; height: ${h}`);
-            }
-          };
-          if (videoAsset.readyState >= 1) setVideoPlaneSize();
-          else videoAsset.addEventListener('loadedmetadata', setVideoPlaneSize, { once: true });
-          // Ensure material points to current #videoAsset
-          videoPlane.setAttribute('material', 'src: #videoAsset; shader: flat; side: double');
-          videoPlane.setAttribute('visible', 'true');
-        } else {
-          // fallback to videosphere if plane missing
-          videoSphere.setAttribute('visible', 'true');
-        }
+  if (fileInput) {
+    fileInput.addEventListener('change', e => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      currentDirInfo = null;
+      if (infoEl) {
+        infoEl.textContent = '';
+        infoEl.style.display = 'none';
       }
-      playPauseBtn.style.display = 'block';
-      seekBar.style.display = 'block';
-
-      // rebind media listeners (prevent duplicates)
-      videoAsset.removeEventListener('loadedmetadata', onLoadedMetadata);
-      videoAsset.removeEventListener('timeupdate', onTimeUpdate);
-      seekBar.removeEventListener('input', onSeekInput);
-      videoAsset.addEventListener('loadedmetadata', onLoadedMetadata);
-      videoAsset.addEventListener('timeupdate', onTimeUpdate);
-      seekBar.addEventListener('input', onSeekInput);
-    } else {
-      videoAsset.pause();
-      videoAsset.removeAttribute('src');
-      imageAsset.setAttribute('src', src);
-      imageAsset.addEventListener('load', () => {
-        if (isVR180) {
-          // VR180: Use dedicated 180° sphere wedge entity
-          if (vr180Sphere) {
-            vr180Sphere.setAttribute('stereo-sbs', 'src: #imageAsset; monoEye: left; insideSphere: true');
-            vr180Sphere.setAttribute('visible', 'true');
-          }
-        }
-        if (isVR360) {
-          // VR360: a-sky に反映（2:1 カバー調整）
-          skyEl.setAttribute('src', '#imageAsset');
-          skyEl.setAttribute('visible', 'true');
-
-          const replaceSkyTexture = () => {
-            const mesh = skyEl.getObject3D('mesh');
-            if (!(mesh && mesh.material)) return false;
-            const THREE = AFRAME.THREE;
-            const newTex = new THREE.Texture(imageAsset);
-            if (THREE.SRGBColorSpace) {
-              newTex.colorSpace = THREE.SRGBColorSpace;
-            }
-            newTex.minFilter = THREE.LinearFilter;
-            newTex.magFilter = THREE.LinearFilter;
-            newTex.generateMipmaps = false;
-            newTex.flipY = true;
-            newTex.wrapS = THREE.ClampToEdgeWrapping;
-            newTex.wrapT = THREE.ClampToEdgeWrapping;
-
-            const iw = imageAsset.naturalWidth || (newTex.image && newTex.image.width) || 0;
-            const ih = imageAsset.naturalHeight || (newTex.image && newTex.image.height) || 1;
-            const A = iw / ih;
-            const D = 2; // 2:1
-            let rx = 1, ry = 1, ox = 0, oy = 0;
-            if (A > D) { rx = D / A; ox = (1 - rx) / 2; }
-            else if (A < D) { ry = A / D; oy = (1 - ry) / 2; }
-            newTex.repeat.set(rx, ry);
-            newTex.offset.set(ox, oy);
-            newTex.needsUpdate = true;
-
-            if (mesh.material.map && mesh.material.map.dispose) {
-              try { mesh.material.map.dispose(); } catch (e) {}
-            }
-            mesh.material.map = newTex;
-            mesh.material.needsUpdate = true;
-            return true;
-          };
-
-          if (!replaceSkyTexture()) {
-            const onReady = () => { replaceSkyTexture(); };
-            skyEl.addEventListener('materialtextureloaded', onReady, { once: true });
-          }
-        } else if (!isVR180) {
-          // 平面画像: アスペクトを維持してplaneサイズを調整（最大辺≈2m）
-          const iw = imageAsset.naturalWidth || 1;
-          const ih = imageAsset.naturalHeight || 1;
-          const aspect = isSBS2D ? (iw / 2) / ih : (iw / ih);
-          // 高さを基準に横幅を計算（常に高さ一定）
-          const h = 3; // 基準高さ（m）
-          const w = h * aspect;
-          if (isSBS2D && stereoPlane) {
-            // Use stereo plane with shader (no need to set material manually)
-            stereoPlane.setAttribute('geometry', `primitive: plane; width: ${w}; height: ${h}`);
-            stereoPlane.setAttribute('stereo-sbs', 'src: #imageAsset; monoEye: left; planeMode: true');
-            stereoPlane.setAttribute('visible', 'true');
-          } else if (imagePlane) {
-            imagePlane.setAttribute('geometry', `primitive: plane; width: ${w}; height: ${h}`);
-            // Force-refresh texture so repeated 2D changes update reliably
-            try {
-              const THREE = AFRAME.THREE;
-              const mesh = imagePlane.getObject3D('mesh');
-              if (mesh && mesh.material) {
-                const mat = mesh.material;
-                if (mat.map && mat.map.dispose) { try { mat.map.dispose(); } catch(e){} }
-                const tex = new THREE.Texture(imageAsset);
-                if (THREE.SRGBColorSpace) { tex.colorSpace = THREE.SRGBColorSpace; }
-                tex.minFilter = THREE.LinearFilter;
-                tex.magFilter = THREE.LinearFilter;
-                tex.generateMipmaps = false;
-                // For standard 2D plane rendering, texture Y should be flipped
-                tex.flipY = true;
-                tex.wrapS = THREE.ClampToEdgeWrapping;
-                tex.wrapT = THREE.ClampToEdgeWrapping;
-                tex.needsUpdate = true;
-                mat.map = tex;
-                mat.needsUpdate = true;
-              } else {
-                // Fallback to resetting material src which also triggers update
-                imagePlane.setAttribute('material', 'src: #imageAsset; shader: flat; side: double');
-              }
-            } catch (_) {
-              imagePlane.setAttribute('material', 'src: #imageAsset; shader: flat; side: double');
-            }
-            imagePlane.setAttribute('visible', 'true');
-          }
-        }
-      }, { once: true });
-      playPauseBtn.style.display = 'none';
-      seekBar.style.display = 'none';
-    }
+      const isVideo = file.type && file.type.startsWith('video/');
+      const url = URL.createObjectURL(file);
+      void loadMedia(url, !!isVideo, file.name).catch(err => console.error('[view] Failed to load selected media', err));
+    });
   }
 
-  // File input handler
-  fileInput.addEventListener('change', e => {
-    const file = e.target.files[0];
-    if (!file) return;
-    currentDirInfo = null;
-    loadMedia(URL.createObjectURL(file), file.type.startsWith('video/'), file.name);
-  });
-
-  // Toggle via UI button
-  playPauseBtn.addEventListener('click', togglePlayPause);
-  // Toggle via A-Frame components
+  if (playPauseBtn) {
+    playPauseBtn.addEventListener('click', togglePlayPause);
+  }
   sceneEl.addEventListener('media:toggle', togglePlayPause);
 
-  // URL query handler and conditional WS connect
+  // 起動時にクエリパラメータまたはWS経由の制御を処理
   window.addEventListener('load', () => {
     const raw = window.location.search;
     const search = (raw && raw.length > 1) ? raw.substring(1) : '';
-
     let srcPath = '';
     let info = {};
 
@@ -397,7 +379,7 @@
     if (srcPath) {
       currentDirInfo = Object.keys(info).length ? info : null;
       const fname = srcPath.split('/').pop();
-      loadMedia(srcPath, /\.(mp4|webm|ogg)$/i.test(srcPath), fname);
+      void loadMedia(srcPath, /\.(mp4|webm|ogg)$/i.test(srcPath), fname).catch(err => console.error('[view] Failed to load media from query', err));
       if (infoEl && currentDirInfo) {
         infoEl.style.display = 'block';
         try { infoEl.textContent = JSON.stringify(currentDirInfo, null, 2); } catch (_) {}
@@ -407,19 +389,18 @@
     }
   });
 
-  // WebSocket bridge
   const baseUrl = 'data/';
   let ws;
-  function log(msg) {
+  const log = (msg) => {
     const data = typeof msg === 'string' ? msg : JSON.stringify(msg);
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(data);
     }
-  }
+  };
 
+  // WebSocketでフォルダ監視サーバーと接続し、更新を反映
   function connect() {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    // Detect basePath from current page (directory of view.html)
     const basePath = location.pathname.replace(/\/[^\/]*$/, '');
     ws = new WebSocket(`${proto}://${location.host}${basePath || ''}/`);
     ws.onopen = () => { log('接続済み'); };
@@ -440,18 +421,20 @@
       }
 
       currentDirInfo = info || null;
-      if (info) {
-        infoEl.textContent = JSON.stringify({ path: relPath, info }, null, 2);
-        infoEl.style.display = 'block';
-      } else {
-        infoEl.textContent = '';
-        infoEl.style.display = 'none';
+      if (infoEl) {
+        if (info) {
+          infoEl.textContent = JSON.stringify({ path: relPath, info }, null, 2);
+          infoEl.style.display = 'block';
+        } else {
+          infoEl.textContent = '';
+          infoEl.style.display = 'none';
+        }
       }
 
       if (files && files.length > 0) {
         const p = baseUrl + files[0];
         const fname = files[0].split('/').pop();
-        loadMedia(p, /\.(mp4|webm|ogg)$/i.test(p), fname);
+        void loadMedia(p, /\.(mp4|webm|ogg)$/i.test(p), fname).catch(err => console.error('[view] Failed to load media from websocket', err));
       }
     };
     ws.onclose = () => {
