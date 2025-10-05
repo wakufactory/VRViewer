@@ -9,6 +9,8 @@ const WebSocket = require('ws');
 const app = express();
 const PORT = config.port;
 
+let lastSelection = null;
+
 
  // 静的ファイル配信
  app.use('/data', express.static(path.join(__dirname, 'public', 'data'), { dotfiles: 'allow' }));
@@ -100,13 +102,14 @@ app.get('/api/files', async (req, res) => {
 });
 
 
- // 選択ファイルリスト受信用エンドポイント
- app.post('/api/select', (req, res) => {
+// 選択ファイルリスト受信用エンドポイント
+app.post('/api/select', (req, res) => {
   const body = req.body;
   // 後方互換: 配列だけ送られてきた場合に包む
   const payload = Array.isArray(body) ? { files: body } : body;
   const files = payload.files || [];
   console.log('Selected files:', files, 'info:', payload.info, 'path:', payload.path);
+  lastSelection = payload && typeof payload === 'object' ? payload : null;
   // WebSocket通知
   wss.clients.forEach(client => {
     if (client.readyState === WebSocket.OPEN) {
@@ -114,6 +117,13 @@ app.get('/api/files', async (req, res) => {
     }
   });
   res.json({ success: true, ...payload });
+});
+
+app.get('/api/last-selection', (req, res) => {
+  if (!lastSelection) {
+    return res.json({ files: [] });
+  }
+  res.json(lastSelection);
 });
 
 const options = {
@@ -127,6 +137,13 @@ const wss = new WebSocket.Server({ server });
 // クライアントからのログ受信
 wss.on('connection', (ws, req) => {
   const ip = req.socket.remoteAddress;
+  if (lastSelection) {
+    try {
+      ws.send(JSON.stringify(lastSelection));
+    } catch (err) {
+      console.warn('Failed to send last selection to client:', err);
+    }
+  }
   ws.on('message', message => {
     const text = typeof message === 'string' ? message : message.toString('utf8');
     console.log(`Client log [${ip}]:`, text);

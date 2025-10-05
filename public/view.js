@@ -385,7 +385,14 @@
         try { infoEl.textContent = JSON.stringify(currentDirInfo, null, 2); } catch (_) {}
       }
     } else {
-      connect();
+      const selectionUrl = new URL('./api/last-selection', window.location.href);
+      void fetch(selectionUrl.toString(), { cache: 'no-store' })
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data) handleSelectionPayload(data);
+        })
+        .catch(err => console.warn('[view] Failed to fetch last selection', err))
+        .finally(() => { connect(); });
     }
   });
 
@@ -395,6 +402,36 @@
     const data = typeof msg === 'string' ? msg : JSON.stringify(msg);
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(data);
+    }
+  };
+
+  const handleSelectionPayload = (payload) => {
+    let files = [];
+    let info = null;
+    let relPath = '';
+    if (Array.isArray(payload)) {
+      files = payload;
+    } else if (payload && typeof payload === 'object') {
+      files = Array.isArray(payload.files) ? payload.files : [];
+      info = payload.info || null;
+      relPath = payload.path || '';
+    }
+
+    currentDirInfo = info || null;
+    if (infoEl) {
+      if (info) {
+        infoEl.textContent = JSON.stringify({ path: relPath, info }, null, 2);
+        infoEl.style.display = 'block';
+      } else {
+        infoEl.textContent = '';
+        infoEl.style.display = 'none';
+      }
+    }
+
+    if (files && files.length > 0) {
+      const p = baseUrl + files[0];
+      const fname = files[0].split('/').pop();
+      void loadMedia(p, /\.(mp4|webm|ogg)$/i.test(p), fname).catch(err => console.error('[view] Failed to load media from selection', err));
     }
   };
 
@@ -408,34 +445,7 @@
     ws.onmessage = e => {
       let payload;
       try { payload = JSON.parse(e.data); } catch (_) { payload = e.data; }
-
-      let files = [];
-      let info = null;
-      let relPath = '';
-      if (Array.isArray(payload)) {
-        files = payload;
-      } else if (payload && typeof payload === 'object') {
-        files = Array.isArray(payload.files) ? payload.files : [];
-        info = payload.info || null;
-        relPath = payload.path || '';
-      }
-
-      currentDirInfo = info || null;
-      if (infoEl) {
-        if (info) {
-          infoEl.textContent = JSON.stringify({ path: relPath, info }, null, 2);
-          infoEl.style.display = 'block';
-        } else {
-          infoEl.textContent = '';
-          infoEl.style.display = 'none';
-        }
-      }
-
-      if (files && files.length > 0) {
-        const p = baseUrl + files[0];
-        const fname = files[0].split('/').pop();
-        void loadMedia(p, /\.(mp4|webm|ogg)$/i.test(p), fname).catch(err => console.error('[view] Failed to load media from websocket', err));
-      }
+      handleSelectionPayload(payload);
     };
     ws.onclose = () => {
       setTimeout(connect, 1000);
