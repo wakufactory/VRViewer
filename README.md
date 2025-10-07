@@ -4,7 +4,7 @@
 WebXR 対応の 360° 画像・動画ビューワーです。 
 ローカルwebサーバで動かすwebアプリです。
 
-ファイル選択用の `ui.html` と、VR機器上でビュアーを表示する `view.html` に画面を分けており、PCやスマホのブラウザから操作して WebSocket を介して選択ファイルをリアルタイムに更新します。
+ファイル選択用の `file.html` と、VR機器上でビュアーを表示する `view.html` に画面を分けており、PCやスマホのブラウザから操作して WebSocket を介して選択ファイルをリアルタイムに更新します。
 
 VR機器は、MetaQuest と VisionPro を想定しています。
 
@@ -40,13 +40,13 @@ VR機器は、MetaQuest と VisionPro を想定しています。
    ```
 4. ブラウザで以下の URL にアクセス  
    - ファイル選択ページ：  
-     `https://localhost:<port>/ui.html`  
+     `https://localhost:<port>/file.html`  
    - ビュアーページ：  
      `https://<server-ip>:<port>/view.html`
 
 ## 使用方法
-### 1. ファイル選択ページ (`ui.html`)
-1. `ui.html` を開き、一覧から画像または動画をクリックで選択  
+### 1. ファイル選択ページ (`file.html`)
+1. `file.html` を開き、一覧から画像または動画をクリックで選択  
 2. フォルダの場合はそのフォルダに移動  
 3. フォルダに".thumb"フォルダがある場合に、その中の同名画像をサムネイルとしてリストに表示します。  
 
@@ -107,7 +107,7 @@ UI上では `.info.json` の `type` があるフォルダ名の右側に `[vr180
 ├── ssl          # SSL 鍵・証明書
 └── public
     ├── view.html    # ビューワーページ
-    ├── ui.html      # ファイル選択UI
+    ├── file.html    # ファイル選択UI
     ├── app.js       # UI用クライアントスクリプト
 
 ```
