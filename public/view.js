@@ -26,7 +26,8 @@
     'vr180': () => import('./view-modules/vr180.js'),
     'sbs': () => import('./view-modules/sbs.js'),
     'flat-video': () => import('./view-modules/flat-video.js'),
-    'flat-image': () => import('./view-modules/flat-image.js')
+    'flat-image': () => import('./view-modules/flat-image.js'),
+    'model-glb': () => import('./view-modules/model-glb.js')
   };
 
   // 既に生成したビューアダプタはキャッシュして使い回す
@@ -36,6 +37,16 @@
   let currentDirInfo = null;
 
   const toLower = (value) => (value == null ? '' : String(value).toLowerCase());
+
+  const detectMediaType = ({ filename, mimeType }) => {
+    const rawName = filename || '';
+    const name = toLower(rawName.replace(/[?#].*$/, ''));
+    if (name.endsWith('.glb')) return 'model';
+    if (mimeType && String(mimeType).startsWith('video/')) return 'video';
+    if (mimeType && String(mimeType).startsWith('image/')) return 'image';
+    if (/\.(mp4|webm|ogg)$/i.test(name)) return 'video';
+    return 'image';
+  };
 
   // ファイル名・メタ情報から表示モードを推測
   const detectMode = ({ filename, info }) => {
@@ -59,12 +70,18 @@
   };
 
   // ビュー種別に応じて読み込むモジュールのキーを決定
-  const resolveViewModuleKey = ({ isVideo, filename, info }) => {
+  const resolveViewModuleKey = ({ mediaType, filename, info }) => {
+    if (mediaType === 'model') {
+      return { key: 'model-glb', mode: null };
+    }
+
     const mode = detectMode({ filename, info });
     if (mode === 'vr180') return { key: 'vr180', mode };
     if (mode === 'vr360') return { key: 'vr360', mode };
     if (mode === 'sbs') return { key: 'sbs', mode };
-    return { key: isVideo ? 'flat-video' : 'flat-image', mode: null };
+
+    const key = mediaType === 'video' ? 'flat-video' : 'flat-image';
+    return { key, mode: null };
   };
 
   // 指定キーのビューアダプタを取得（未ロードならモジュールを動的 import）
@@ -198,28 +215,42 @@
   };
 
   // メディア読み込みとビュー切替のメイン処理
-  const loadMedia = async (src, isVideo, filename) => {
+  const loadMedia = async ({ src, mediaType, filename }) => {
     if (!src) return;
     if (fileInput) fileInput.style.display = 'none';
 
-    const { key, mode } = resolveViewModuleKey({ isVideo, filename, info: currentDirInfo });
+    const effectiveType = (mediaType === 'video' || mediaType === 'model') ? mediaType : 'image';
+    const { key, mode } = resolveViewModuleKey({ mediaType: effectiveType, filename, info: currentDirInfo });
 
-    if (isVideo) {
+    if (effectiveType === 'video') {
       imageAsset.removeAttribute('src');
       videoAsset.setAttribute('src', src);
       rebindVideoUi();
       showVideoUi();
       if (playPauseBtn) playPauseBtn.textContent = 'Play';
-    } else {
+    } else if (effectiveType === 'image') {
       videoAsset.pause();
       videoAsset.removeAttribute('src');
       imageAsset.setAttribute('src', src);
       releaseVideoUi();
       hideVideoUi();
+    } else if (effectiveType === 'model') {
+      videoAsset.pause();
+      videoAsset.removeAttribute('src');
+      imageAsset.removeAttribute('src');
+      releaseVideoUi();
+      hideVideoUi();
     }
 
     try {
-      await activateView(key, { src, filename, isVideo, mode, info: currentDirInfo });
+      await activateView(key, {
+        src,
+        filename,
+        mediaType: effectiveType,
+        isVideo: effectiveType === 'video',
+        mode,
+        info: currentDirInfo
+      });
     } catch (err) {
       console.error('[view] Failed to activate view', err);
     }
@@ -339,9 +370,9 @@
         infoEl.textContent = '';
         infoEl.style.display = 'none';
       }
-      const isVideo = file.type && file.type.startsWith('video/');
       const url = URL.createObjectURL(file);
-      void loadMedia(url, !!isVideo, file.name).catch(err => console.error('[view] Failed to load selected media', err));
+      const mediaType = detectMediaType({ filename: file.name, mimeType: file.type });
+      void loadMedia({ src: url, mediaType, filename: file.name }).catch(err => console.error('[view] Failed to load selected media', err));
     });
   }
 
@@ -379,7 +410,8 @@
     if (srcPath) {
       currentDirInfo = Object.keys(info).length ? info : null;
       const fname = srcPath.split('/').pop();
-      void loadMedia(srcPath, /\.(mp4|webm|ogg)$/i.test(srcPath), fname).catch(err => console.error('[view] Failed to load media from query', err));
+      const mediaType = detectMediaType({ filename: fname });
+      void loadMedia({ src: srcPath, mediaType, filename: fname }).catch(err => console.error('[view] Failed to load media from query', err));
       if (infoEl && currentDirInfo) {
         infoEl.style.display = 'block';
         try { infoEl.textContent = JSON.stringify(currentDirInfo, null, 2); } catch (_) {}
@@ -431,7 +463,8 @@
     if (files && files.length > 0) {
       const p = baseUrl + files[0];
       const fname = files[0].split('/').pop();
-      void loadMedia(p, /\.(mp4|webm|ogg)$/i.test(p), fname).catch(err => console.error('[view] Failed to load media from selection', err));
+      const mediaType = detectMediaType({ filename: fname });
+      void loadMedia({ src: p, mediaType, filename: fname }).catch(err => console.error('[view] Failed to load media from selection', err));
     }
   };
 

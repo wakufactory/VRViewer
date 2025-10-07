@@ -1,6 +1,6 @@
 {
   "rootFolder": "./public/data",
-  "fileRegex": "\\.(jpg|jpeg|mp4|webm|JPG|JPEG)$",
+  "fileRegex": "\\.(jpg|jpeg|mp4|webm|JPG|JPEG|glb)$",
   "selectionMode": "single",
   "port": 3010
 }

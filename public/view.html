@@ -16,7 +16,7 @@
       font-size: 16px; display: none;
     }
     #seek-bar {
-      position: absolute; left: 50%; bottom: 5%;
+      position: absolute; left: 50%; bottom: 10%;
       transform: translateX(-50%);
       z-index: 1000; width: 50%; display: none;
     }
@@ -46,7 +46,7 @@
   </style>
 </head>
 <body>
-  <input type="file" id="file-input" accept="image/*,video/*" />
+  <input type="file" id="file-input" accept="image/*,video/*,.glb,model/gltf-binary" />
   <button id="play-pause-btn">Play</button>
   <input type="range" id="seek-bar" min="0" max="100" step="0.1" value="0" />
   <pre id="folder-info" style="position:absolute; right:10px; top:10px; z-index:1000; background:rgba(0,0,0,0.5); color:#fff; padding:8px; margin:0; max-width:40vw; max-height:40vh; overflow:auto; font-size:12px; display:none"></pre>
