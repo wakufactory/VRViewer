@@ -108,7 +108,7 @@ UI上では `.info.json` の `type` があるフォルダ名の右側に `[vr180
 └── public
     ├── view.html    # ビューワーページ
     ├── file.html    # ファイル選択UI
-    ├── app.js       # UI用クライアントスクリプト
+    ├── file.js      # UI用クライアントスクリプト
 
 ```
 

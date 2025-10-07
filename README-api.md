@@ -12,7 +12,7 @@
 ### `GET /api/files?path=<relative path>`
 - 指定ディレクトリ配下の一覧を `folders` と `files` に分けて返す。結果にはソート用の `mtime`、サムネイル URL（`thumbUrl`）、フォルダ情報 `.info.json` の内容（`info`）が含まれる。
 - `selectionMode` はクライアントが複数選択可能かを判断するために利用する。
-- `public/app.js:33` から呼び出され、レスポンスは UI 表示と `state` 更新に使われる。
+- `public/file.js:33` から呼び出され、レスポンスは UI 表示と `state` 更新に使われる。
 
 ### `POST /api/select`
 - ボディ例: `{ "files": ["folder/file.mp4"], "info": { "type": "vr360" }, "path": "folder" }`
@@ -32,7 +32,7 @@
 
 ## クライアント別の役割
 
-### `file.html` / `public/app.js`
+### `file.html` / `public/file.js`
 - `GET /api/files` でディレクトリ一覧を取得し、クリック操作でハッシュ遷移と表示を更新する。
 - ファイル選択確定時に `POST /api/select` を呼び出し、同時に WebSocket 経由で他クライアントへ通知される。
 
@@ -50,4 +50,3 @@
 2. サーバーは選択情報を `lastSelection` に保存し、WebSocket でビューアとパネルに配信。ビューアは `data/` 配下から実ファイルを読み込み表示する。
 3. パラメータパネルは `{"type":"params"}` を送信し、サーバーが `lastParameters` を更新。ビューアは受信したパラメータをビューモジュールへ適用し、パネル UI もサーバー経由で最新状態を受け取る。
 4. 新規にクライアントが接続した場合でも、サーバーが保持している `lastSelection` と `lastParameters` が送信され、直前の状態をそのまま再現できる。
-
