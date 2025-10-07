@@ -1,13 +1,50 @@
 const TARGET_SIZE = 0.5;
 const MODEL_POSITION = '0 1.2 1';
 const MODEL_ROTATION = '0 180 0';
+const ORIENTATION_ROTATIONS = {
+  front: MODEL_ROTATION,
+  back: '0 0 0',
+  left: '0 90 0',
+  right: '0 -90 0'
+};
+const DEFAULT_ORIENTATION = 'front';
 
 export function createView({ viewRoot }) {
   let modelEntity = null;
   let activeToken = 0;
   let tokenCounter = 0;
+  let baseScale = 1;
+  let externalScale = 1;
+  let currentOrientationKey = DEFAULT_ORIENTATION;
+  const hasOwn = Object.prototype.hasOwnProperty;
 
   const getThree = () => (window.AFRAME && window.AFRAME.THREE) ? window.AFRAME.THREE : null;
+
+  const getRotationForOrientation = (key) => {
+    const normalized = typeof key === 'string' ? key.trim().toLowerCase() : '';
+    return ORIENTATION_ROTATIONS[normalized] || MODEL_ROTATION;
+  };
+
+  const applyTransforms = () => {
+    if (!modelEntity) return;
+    const finalScale = Math.max(0.000001, baseScale * externalScale);
+    modelEntity.object3D.scale.set(finalScale, finalScale, finalScale);
+    modelEntity.setAttribute('rotation', getRotationForOrientation(currentOrientationKey));
+  };
+
+  const updateFromParameters = (params = {}) => {
+    if (hasOwn.call(params, 'modelScale')) {
+      const rawScale = Number(params.modelScale);
+      externalScale = Number.isFinite(rawScale) && rawScale > 0 ? rawScale : 1;
+    }
+    if (hasOwn.call(params, 'modelOrientation')) {
+      const key = typeof params.modelOrientation === 'string'
+        ? params.modelOrientation.trim().toLowerCase()
+        : '';
+      currentOrientationKey = ORIENTATION_ROTATIONS[key] ? key : DEFAULT_ORIENTATION;
+    }
+    applyTransforms();
+  };
 
   const handleModelLoaded = (event) => {
     if (!modelEntity || event.target !== modelEntity) return;
@@ -41,8 +78,8 @@ export function createView({ viewRoot }) {
 
     const maxDim = Math.max(size.x, size.y, size.z);
     // Fit the model so the largest dimension becomes 0.5m.
-    const scaleFactor = maxDim > 0 ? TARGET_SIZE / maxDim : 1;
-    modelEntity.object3D.scale.set(scaleFactor, scaleFactor, scaleFactor);
+    baseScale = maxDim > 0 ? TARGET_SIZE / maxDim : 1;
+    applyTransforms();
 
     modelEntity.setAttribute('visible', 'true');
   };
@@ -61,7 +98,7 @@ export function createView({ viewRoot }) {
       el.dataset.loadToken = '0';
       el.setAttribute('visible', 'false');
       el.setAttribute('position', MODEL_POSITION);
-      el.setAttribute('rotation', MODEL_ROTATION);
+      el.setAttribute('rotation', getRotationForOrientation(currentOrientationKey));
       el.addEventListener('model-loaded', handleModelLoaded);
       el.addEventListener('model-error', handleModelError);
       viewRoot.appendChild(el);
@@ -75,9 +112,11 @@ export function createView({ viewRoot }) {
       const el = ensureEntity();
       const token = String(++tokenCounter);
       activeToken = Number(token);
+      baseScale = 1;
       el.dataset.loadToken = token;
       el.setAttribute('visible', 'false');
       el.object3D.scale.set(1, 1, 1);
+      applyTransforms();
       el.removeAttribute('gltf-model');
       if (src) {
         el.setAttribute('gltf-model', src);
@@ -85,10 +124,14 @@ export function createView({ viewRoot }) {
     },
     hide() {
       activeToken = 0;
+      baseScale = 1;
       if (modelEntity) {
         modelEntity.removeAttribute('gltf-model');
         modelEntity.setAttribute('visible', 'false');
       }
+    },
+    handleParameters(params) {
+      updateFromParameters(params || {});
     }
   };
 }

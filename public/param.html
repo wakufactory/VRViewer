@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>VRV Parameter Panel</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background-color: #1f1f24;
+      color: #f2f4f8;
+    }
+    body {
+      margin: 0;
+      padding: 24px 16px 48px;
+      display: flex;
+      justify-content: center;
+    }
+    main {
+      width: min(480px, 100%);
+      display: grid;
+      gap: 20px;
+      background: rgba(33, 33, 40, 0.88);
+      border-radius: 16px;
+      padding: 24px 28px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    h1 {
+      font-size: 1.4rem;
+      margin: 0;
+      letter-spacing: .03em;
+    }
+    section {
+      display: grid;
+      gap: 12px;
+    }
+    label {
+      font-size: 0.95rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    input[type="range"] {
+      width: 100%;
+      accent-color: #48b0ff;
+    }
+    select, button, input[type="range"] {
+      font-size: 1rem;
+    }
+    select, button {
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.08);
+      color: inherit;
+    }
+    button {
+      cursor: pointer;
+      transition: background 120ms ease, transform 120ms ease;
+    }
+    button:hover {
+      background: rgba(255,255,255,0.14);
+    }
+    button:active {
+      transform: scale(0.97);
+    }
+    .status {
+      font-size: 0.85rem;
+      opacity: 0.85;
+    }
+    .controls-row {
+      display: flex;
+      gap: 12px;
+    }
+    .controls-row > * {
+      flex: 1 1 0;
+    }
+    @media (max-width: 480px) {
+      main {
+        padding: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section>
+      <h1>Viewer Parameters</h1>
+      <p style="margin:0;font-size:0.9rem;opacity:0.75;">
+        スライダーやセレクトで値を調整すると、ビューアーへリアルタイムに送信されます。
+      </p>
+    </section>
+
+    <section>
+      <label for="scale-slider">
+        モデルスケール
+        <span id="scale-value">1.00</span>
+      </label>
+      <input id="scale-slider" type="range" min="0.1" max="3" step="0.01" value="1" />
+    </section>
+
+    <section>
+      <label for="orientation-select">モデル向き</label>
+      <select id="orientation-select">
+        <option value="front">正面（デフォルト）</option>
+        <option value="back">背面</option>
+        <option value="left">左向き</option>
+        <option value="right">右向き</option>
+      </select>
+    </section>
+
+    <section class="controls-row">
+      <button type="button" id="reset-btn">パラメータを初期化</button>
+    </section>
+
+    <section class="status">
+      <span id="connection-status">接続中...</span>
+    </section>
+  </main>
+
+  <script>
+    (() => {
+      const scaleInput = document.getElementById('scale-slider');
+      const scaleValue = document.getElementById('scale-value');
+      const orientationSelect = document.getElementById('orientation-select');
+      const statusEl = document.getElementById('connection-status');
+      const resetBtn = document.getElementById('reset-btn');
+
+      if (!scaleInput || !scaleValue || !orientationSelect || !statusEl) {
+        console.warn('[param] 必要なDOMが見つからないため初期化を中断します');
+        return;
+      }
+
+      let ws = null;
+      let reconnectTimer = null;
+      let pendingFullSync = false;
+      let suppressUiEvents = false;
+      let latestState = { modelScale: 1, modelOrientation: 'front' };
+
+      const updateScaleLabel = (value) => {
+        const numeric = Number(value);
+        scaleValue.textContent = Number.isFinite(numeric) ? numeric.toFixed(2) : '---';
+      };
+
+      const applyStateToUi = (state) => {
+        suppressUiEvents = true;
+        if (typeof state.modelScale === 'number' && !Number.isNaN(state.modelScale)) {
+          const min = Number(scaleInput.min || '0.1');
+          const max = Number(scaleInput.max || '3');
+          const clamped = Math.min(Math.max(state.modelScale, min), max);
+          if (!Number.isNaN(clamped)) {
+            scaleInput.value = String(clamped);
+            updateScaleLabel(clamped);
+          }
+        }
+        if (typeof state.modelOrientation === 'string') {
+          const key = state.modelOrientation.toLowerCase();
+          if (orientationSelect.querySelector(`option[value="${key}"]`)) {
+            orientationSelect.value = key;
+          }
+        }
+        suppressUiEvents = false;
+      };
+
+      const sendCurrentState = () => {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          pendingFullSync = true;
+          return;
+        }
+        try {
+          ws.send(JSON.stringify({ type: 'params', params: latestState }));
+          pendingFullSync = false;
+        } catch (err) {
+          console.warn('[param] パラメータ送信に失敗しました', err);
+          pendingFullSync = true;
+        }
+      };
+
+      const updateStateAndSend = (partial) => {
+        if (!partial || typeof partial !== 'object') return;
+        latestState = { ...latestState, ...partial };
+        sendCurrentState();
+      };
+
+      const setStatus = (text) => {
+        statusEl.textContent = text;
+      };
+
+      const handleIncomingParams = (params) => {
+        if (!params || typeof params !== 'object') return;
+        latestState = { ...latestState, ...params };
+        applyStateToUi(latestState);
+      };
+
+      const connect = () => {
+        if (reconnectTimer) {
+          clearTimeout(reconnectTimer);
+          reconnectTimer = null;
+        }
+        const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+        const basePath = location.pathname.replace(/\/[^\/]*$/, '');
+        const url = `${proto}://${location.host}${basePath || ''}/`;
+        setStatus('接続中...');
+        ws = new WebSocket(url);
+
+        ws.onopen = () => {
+          setStatus('接続済み');
+          sendCurrentState();
+        };
+
+        ws.onmessage = (event) => {
+          const data = event.data;
+          let parsed = null;
+          if (typeof data === 'string') {
+            try { parsed = JSON.parse(data); } catch (_) { parsed = null; }
+          }
+          if (parsed && typeof parsed === 'object') {
+            if (parsed.type === 'params') {
+              handleIncomingParams(parsed.params);
+              return;
+            }
+            if (parsed.type === 'selection') {
+              // selection messages are acknowledged but ignored in this panel
+              return;
+            }
+            if (parsed.params && parsed.type == null) {
+              handleIncomingParams(parsed.params);
+              return;
+            }
+          }
+        };
+
+        ws.onerror = () => {
+          setStatus('接続エラー (再試行)');
+        };
+
+        ws.onclose = () => {
+          setStatus('未接続 (再接続待ち)');
+          reconnectTimer = setTimeout(connect, 1000);
+        };
+      };
+
+      scaleInput.addEventListener('input', () => {
+        if (suppressUiEvents) return;
+        const value = Number(scaleInput.value);
+        updateScaleLabel(value);
+        if (Number.isFinite(value)) {
+          updateStateAndSend({ modelScale: value });
+        }
+      });
+
+      orientationSelect.addEventListener('change', () => {
+        if (suppressUiEvents) return;
+        const value = orientationSelect.value;
+        updateStateAndSend({ modelOrientation: value });
+      });
+
+      resetBtn.addEventListener('click', () => {
+        latestState = { modelScale: 1, modelOrientation: 'front' };
+        applyStateToUi(latestState);
+        sendCurrentState();
+      });
+
+      window.addEventListener('beforeunload', () => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.close();
+        }
+        if (reconnectTimer) {
+          clearTimeout(reconnectTimer);
+          reconnectTimer = null;
+        }
+      });
+
+      updateScaleLabel(scaleInput.value);
+      connect();
+    })();
+  </script>
+</body>
+</html>

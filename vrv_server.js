@@ -10,6 +10,10 @@ const app = express();
 const PORT = config.port;
 
 let lastSelection = null;
+let lastParameters = {
+  modelScale: 1,
+  modelOrientation: 'front'
+};
 
 
  // 静的ファイル配信
@@ -111,9 +115,10 @@ app.post('/api/select', (req, res) => {
   console.log('Selected files:', files, 'info:', payload.info, 'path:', payload.path);
   lastSelection = payload && typeof payload === 'object' ? payload : null;
   // WebSocket通知
+  const message = JSON.stringify(payload);
   wss.clients.forEach(client => {
     if (client.readyState === WebSocket.OPEN) {
-      client.send(JSON.stringify(payload));
+      client.send(message);
     }
   });
   res.json({ success: true, ...payload });
@@ -144,8 +149,36 @@ wss.on('connection', (ws, req) => {
       console.warn('Failed to send last selection to client:', err);
     }
   }
+  if (lastParameters && Object.keys(lastParameters).length > 0) {
+    try {
+      ws.send(JSON.stringify({ type: 'params', params: lastParameters }));
+    } catch (err) {
+      console.warn('Failed to send last parameters to client:', err);
+    }
+  }
   ws.on('message', message => {
     const text = typeof message === 'string' ? message : message.toString('utf8');
+    let parsed = null;
+    if (text && text.length > 0) {
+      try {
+        parsed = JSON.parse(text);
+      } catch (err) {
+        parsed = null;
+      }
+    }
+
+    const isParamPayload = parsed && typeof parsed === 'object' && parsed.type === 'params' && parsed.params && typeof parsed.params === 'object';
+    if (isParamPayload) {
+      lastParameters = { ...lastParameters, ...parsed.params };
+      const payload = JSON.stringify({ type: 'params', params: lastParameters });
+      wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(payload);
+        }
+      });
+      return;
+    }
+
     console.log(`Client log [${ip}]:`, text);
   });
 });

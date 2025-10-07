@@ -9,6 +9,68 @@
   const imageAsset = document.getElementById('imageAsset');
   const videoAsset = document.getElementById('videoAsset');
 
+  const parameterStore = (() => {
+    let current = { modelScale: 1, modelOrientation: 'front' };
+    const listeners = new Set();
+
+    const cloneSnapshot = () => ({ ...current });
+
+    const notify = (diff) => {
+      if (!listeners.size) return;
+      const snapshot = cloneSnapshot();
+      listeners.forEach(listener => {
+        try {
+          listener(snapshot, diff);
+        } catch (err) {
+          console.warn('[view] Parameter listener failed', err);
+        }
+      });
+    };
+
+    return {
+      get() {
+        return cloneSnapshot();
+      },
+      getValue(key) {
+        return current[key];
+      },
+      set(updates, options = {}) {
+        if (!updates || typeof updates !== 'object') return;
+        const replace = !!options.replace;
+        const next = replace ? { ...updates } : { ...current, ...updates };
+        const keys = new Set([...Object.keys(current), ...Object.keys(next)]);
+        const diff = {};
+        let hasChanges = false;
+        keys.forEach(key => {
+          const nextValue = next[key];
+          const prevValue = current[key];
+          if (!Object.is(prevValue, nextValue)) {
+            if (nextValue === undefined) {
+              delete next[key];
+            }
+            diff[key] = nextValue;
+            hasChanges = true;
+          }
+        });
+        if (!hasChanges) return;
+        current = {};
+        Object.keys(next).forEach(key => {
+          if (next[key] !== undefined) {
+            current[key] = next[key];
+          }
+        });
+        notify(diff);
+      },
+      subscribe(listener) {
+        if (typeof listener !== 'function') return () => {};
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      }
+    };
+  })();
+
   // A-Frameに必要な要素が揃っていない場合は初期化を中断
   if (!sceneEl || !imageAsset || !videoAsset) {
     console.warn('[view] Missing required viewer elements; aborting bootstrap');
@@ -35,6 +97,15 @@
   let currentViewAdapter = null;
   let currentViewKey = null;
   let currentDirInfo = null;
+
+  parameterStore.subscribe((snapshot, diff) => {
+    if (!currentViewAdapter || typeof currentViewAdapter.handleParameters !== 'function') return;
+    try {
+      currentViewAdapter.handleParameters(snapshot, diff);
+    } catch (err) {
+      console.warn('[view] Failed to forward parameter update to adapter', err);
+    }
+  });
 
   const toLower = (value) => (value == null ? '' : String(value).toLowerCase());
 
@@ -109,7 +180,7 @@
     }
 
     // ファクトリからアダプタを生成してキャッシュ
-    adapter = factory({ sceneEl, viewRoot, videoAsset, imageAsset });
+    adapter = factory({ sceneEl, viewRoot, videoAsset, imageAsset, parameterStore });
     viewModuleCache.set(key, adapter);
     return adapter;
   };
@@ -131,6 +202,13 @@
 
     if (typeof adapter.show === 'function') {
       await adapter.show(params);
+    }
+    if (typeof adapter.handleParameters === 'function') {
+      try {
+        adapter.handleParameters(parameterStore.get(), null);
+      } catch (err) {
+        console.warn('[view] Failed to apply parameters to adapter', err);
+      }
     }
   };
 
@@ -423,9 +501,9 @@
         .then(data => {
           if (data) handleSelectionPayload(data);
         })
-        .catch(err => console.warn('[view] Failed to fetch last selection', err))
-        .finally(() => { connect(); });
+        .catch(err => console.warn('[view] Failed to fetch last selection', err));
     }
+    connect();
   });
 
   const baseUrl = 'data/';
@@ -435,6 +513,12 @@
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(data);
     }
+  };
+
+  const handleParameterPayload = (payload, options = {}) => {
+    if (!payload || typeof payload !== 'object') return;
+    const replace = options && options.replace;
+    parameterStore.set(payload, { replace });
   };
 
   const handleSelectionPayload = (payload) => {
@@ -475,10 +559,32 @@
     ws = new WebSocket(`${proto}://${location.host}${basePath || ''}/`);
     ws.onopen = () => { log('接続済み'); };
     ws.onerror = () => { log('接続エラー'); };
-    ws.onmessage = e => {
-      let payload;
-      try { payload = JSON.parse(e.data); } catch (_) { payload = e.data; }
-      handleSelectionPayload(payload);
+    ws.onmessage = (event) => {
+      const raw = event.data;
+      let parsed = null;
+      if (typeof raw === 'string') {
+        try {
+          parsed = JSON.parse(raw);
+        } catch (_) {
+          parsed = null;
+        }
+      }
+      if (parsed && typeof parsed === 'object') {
+        if (parsed.type === 'params') {
+          handleParameterPayload(parsed.params, { replace: true });
+          return;
+        }
+        if (parsed.type === 'selection') {
+          const payload = (parsed.payload && typeof parsed.payload === 'object') ? parsed.payload : parsed;
+          handleSelectionPayload(payload);
+          return;
+        }
+        if (Array.isArray(parsed) || Array.isArray(parsed.files) || typeof parsed.files !== 'undefined' || typeof parsed.path !== 'undefined' || typeof parsed.info !== 'undefined') {
+          handleSelectionPayload(parsed);
+          return;
+        }
+      }
+      handleSelectionPayload(parsed ?? raw);
     };
     ws.onclose = () => {
       setTimeout(connect, 1000);
