@@ -10,10 +10,7 @@ const app = express();
 const PORT = config.port;
 
 let lastSelection = null;
-let lastParameters = {
-  modelScale: 1,
-  modelOrientation: 'front'
-};
+let lastParameters = {};
 
 
  // 静的ファイル配信

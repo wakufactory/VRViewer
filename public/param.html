@@ -98,17 +98,15 @@
         モデルスケール
         <span id="scale-value">1.00</span>
       </label>
-      <input id="scale-slider" type="range" min="0.1" max="3" step="0.01" value="1" />
+      <input id="scale-slider" type="range" min="-1" max="2" step="0.001" value="0" />
     </section>
 
     <section>
-      <label for="orientation-select">モデル向き</label>
-      <select id="orientation-select">
-        <option value="front">正面（デフォルト）</option>
-        <option value="back">背面</option>
-        <option value="left">左向き</option>
-        <option value="right">右向き</option>
-      </select>
+      <label for="rotateY-slider">
+        モデル向き (°)
+        <span id="rotateY-value">0°</span>
+      </label>
+      <input id="rotateY-slider" type="range" min="0" max="360" step="1" value="0" />
     </section>
 
     <section class="controls-row">
@@ -124,11 +122,12 @@
     (() => {
       const scaleInput = document.getElementById('scale-slider');
       const scaleValue = document.getElementById('scale-value');
-      const orientationSelect = document.getElementById('orientation-select');
+      const rotateInput = document.getElementById('rotateY-slider');
+      const rotateValue = document.getElementById('rotateY-value');
       const statusEl = document.getElementById('connection-status');
       const resetBtn = document.getElementById('reset-btn');
 
-      if (!scaleInput || !scaleValue || !orientationSelect || !statusEl) {
+      if (!scaleInput || !scaleValue || !rotateInput || !rotateValue || !statusEl) {
         console.warn('[param] 必要なDOMが見つからないため初期化を中断します');
         return;
       }
@@ -137,29 +136,65 @@
       let reconnectTimer = null;
       let pendingFullSync = false;
       let suppressUiEvents = false;
-      let latestState = { modelScale: 1, modelOrientation: 'front' };
+      let latestState = { modelScale: 1, rotateY: 0 };
 
-      const updateScaleLabel = (value) => {
-        const numeric = Number(value);
+      const SCALE_MIN = 0.1;
+      const SCALE_MAX = 100;
+      const SCALE_MIN_EXP = Math.log10(SCALE_MIN);
+      const SCALE_MAX_EXP = Math.log10(SCALE_MAX);
+      const normalizeAngle = (deg) => {
+        const numeric = Number(deg);
+        if (!Number.isFinite(numeric)) return 0;
+        const wrapped = numeric % 360;
+        const positive = wrapped < 0 ? wrapped + 360 : wrapped;
+        const base = positive === 0 ? 0 : positive;
+        if (base === 0 && numeric > 0) {
+          return 360;
+        }
+        return base;
+      };
+
+      const sliderToScale = (sliderValue) => {
+        const exp = Number(sliderValue);
+        if (!Number.isFinite(exp)) return 1;
+        const clampedExp = Math.min(Math.max(exp, SCALE_MIN_EXP), SCALE_MAX_EXP);
+        const value = Math.pow(10, clampedExp);
+        return Number.isFinite(value) ? value : 1;
+      };
+
+      const scaleToSlider = (scale) => {
+        const clamped = Math.min(Math.max(Number(scale) || 1, SCALE_MIN), SCALE_MAX);
+        const exp = Math.log10(clamped);
+        return Number.isFinite(exp) ? exp : 0;
+      };
+
+      const setScaleSliderValue = (scale) => {
+        const sliderValue = scaleToSlider(scale);
+        scaleInput.value = sliderValue.toFixed(3);
+      };
+
+      const updateScaleLabel = (scale) => {
+        const numeric = Number(scale);
         scaleValue.textContent = Number.isFinite(numeric) ? numeric.toFixed(2) : '---';
+      };
+
+      const updateRotateLabel = (deg) => {
+        const numeric = Number(deg);
+        rotateValue.textContent = Number.isFinite(numeric) ? `${Math.round(numeric)}°` : '---';
       };
 
       const applyStateToUi = (state) => {
         suppressUiEvents = true;
         if (typeof state.modelScale === 'number' && !Number.isNaN(state.modelScale)) {
-          const min = Number(scaleInput.min || '0.1');
-          const max = Number(scaleInput.max || '3');
-          const clamped = Math.min(Math.max(state.modelScale, min), max);
-          if (!Number.isNaN(clamped)) {
-            scaleInput.value = String(clamped);
-            updateScaleLabel(clamped);
-          }
+          const scale = Math.min(Math.max(state.modelScale, SCALE_MIN), SCALE_MAX);
+          setScaleSliderValue(scale);
+          updateScaleLabel(scale);
         }
-        if (typeof state.modelOrientation === 'string') {
-          const key = state.modelOrientation.toLowerCase();
-          if (orientationSelect.querySelector(`option[value="${key}"]`)) {
-            orientationSelect.value = key;
-          }
+        if (typeof state.rotateY === 'number' && Number.isFinite(state.rotateY)) {
+          const angle = normalizeAngle(state.rotateY);
+          const clamped = Math.min(Math.max(Math.round(angle), Number(rotateInput.min)), Number(rotateInput.max));
+          rotateInput.value = String(clamped);
+          updateRotateLabel(clamped);
         }
         suppressUiEvents = false;
       };
@@ -244,21 +279,24 @@
 
       scaleInput.addEventListener('input', () => {
         if (suppressUiEvents) return;
-        const value = Number(scaleInput.value);
-        updateScaleLabel(value);
-        if (Number.isFinite(value)) {
-          updateStateAndSend({ modelScale: value });
+        const scale = sliderToScale(scaleInput.value);
+        updateScaleLabel(scale);
+        if (Number.isFinite(scale)) {
+          updateStateAndSend({ modelScale: scale });
         }
       });
 
-      orientationSelect.addEventListener('change', () => {
+      rotateInput.addEventListener('input', () => {
         if (suppressUiEvents) return;
-        const value = orientationSelect.value;
-        updateStateAndSend({ modelOrientation: value });
+        const value = Math.min(Math.max(Number(rotateInput.value), Number(rotateInput.min)), Number(rotateInput.max));
+        updateRotateLabel(value);
+        if (Number.isFinite(value)) {
+          updateStateAndSend({ rotateY: value });
+        }
       });
 
       resetBtn.addEventListener('click', () => {
-        latestState = { modelScale: 1, modelOrientation: 'front' };
+        latestState = { modelScale: 1, rotateY: 0 };
         applyStateToUi(latestState);
         sendCurrentState();
       });
@@ -273,7 +311,9 @@
         }
       });
 
-      updateScaleLabel(scaleInput.value);
+      setScaleSliderValue(latestState.modelScale);
+      updateScaleLabel(latestState.modelScale);
+      updateRotateLabel(latestState.rotateY);
       connect();
     })();
   </script>

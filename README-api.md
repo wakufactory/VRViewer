@@ -27,7 +27,7 @@
 - エンドポイント: `wss://<host>/<base path>/`
 - 接続直後にサーバーが `lastSelection` と `{"type":"params","params":{...}}` を push し、クライアントは状態を初期化する。
 - ファイルセレクタは選択確定時に JSON（配列のみの場合も含む）を送信。サーバーはそのまま他クライアントに転送する。
-- パラメータパネルは `{"type":"params","params":{modelScale, modelOrientation}}` を送信。サーバーは `lastParameters` を更新し、全クライアントへ再送する。
+- パラメータパネルは `{"type":"params","params":{modelScale, rotateY}}` を送信。サーバーは `lastParameters` を更新し、全クライアントへ再送する。
 - ビューアは `type === "params"` のメッセージで `parameterStore` を更新し、現在のビューモジュールにパラメータ差分を渡す。
 
 ## クライアント別の役割

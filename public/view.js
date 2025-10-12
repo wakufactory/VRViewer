@@ -10,7 +10,7 @@
   const videoAsset = document.getElementById('videoAsset');
 
   const parameterStore = (() => {
-    let current = { modelScale: 1, modelOrientation: 'front' };
+    let current = {};
     const listeners = new Set();
 
     const cloneSnapshot = () => ({ ...current });
