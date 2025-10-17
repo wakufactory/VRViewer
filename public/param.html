@@ -35,6 +35,10 @@
       display: grid;
       gap: 12px;
     }
+    .axis-control {
+      display: grid;
+      gap: 6px;
+    }
     label {
       font-size: 0.95rem;
       font-weight: 600;
@@ -109,6 +113,30 @@
       <input id="rotateY-slider" type="range" min="0" max="360" step="1" value="0" />
     </section>
 
+    <section>
+      <div class="axis-control">
+        <label for="posX-slider">
+          位置 X
+          <span id="posX-value">0.00</span>
+        </label>
+        <input id="posX-slider" type="range" min="-1.5" max="1.5" step="0.01" value="0" />
+      </div>
+      <div class="axis-control">
+        <label for="posY-slider">
+          位置 Y
+          <span id="posY-value">0.00</span>
+        </label>
+        <input id="posY-slider" type="range" min="-1.5" max="1.5" step="0.01" value="0" />
+      </div>
+      <div class="axis-control">
+        <label for="posZ-slider">
+          位置 Z
+          <span id="posZ-value">0.00</span>
+        </label>
+        <input id="posZ-slider" type="range" min="-1.5" max="1.5" step="0.01" value="0" />
+      </div>
+    </section>
+
     <section class="controls-row">
       <button type="button" id="reset-btn">パラメータを初期化</button>
     </section>
@@ -126,8 +154,21 @@
       const rotateValue = document.getElementById('rotateY-value');
       const statusEl = document.getElementById('connection-status');
       const resetBtn = document.getElementById('reset-btn');
+      const POSITION_AXES = ['X', 'Y', 'Z'];
+      const positionInputs = POSITION_AXES.reduce((acc, axis) => {
+        acc[axis] = document.getElementById(`pos${axis}-slider`);
+        return acc;
+      }, {});
+      const positionValues = POSITION_AXES.reduce((acc, axis) => {
+        acc[axis] = document.getElementById(`pos${axis}-value`);
+        return acc;
+      }, {});
 
-      if (!scaleInput || !scaleValue || !rotateInput || !rotateValue || !statusEl) {
+      const missingPositionEl = POSITION_AXES.some(
+        (axis) => !positionInputs[axis] || !positionValues[axis]
+      );
+
+      if (!scaleInput || !scaleValue || !rotateInput || !rotateValue || !statusEl || missingPositionEl) {
         console.warn('[param] 必要なDOMが見つからないため初期化を中断します');
         return;
       }
@@ -136,12 +177,14 @@
       let reconnectTimer = null;
       let pendingFullSync = false;
       let suppressUiEvents = false;
-      let latestState = { modelScale: 1, rotateY: 0 };
+      let latestState = { modelScale: 1, rotateY: 0, posX: 0, posY: 0, posZ: 0 };
 
       const SCALE_MIN = 0.1;
       const SCALE_MAX = 100;
       const SCALE_MIN_EXP = Math.log10(SCALE_MIN);
       const SCALE_MAX_EXP = Math.log10(SCALE_MAX);
+      const POSITION_MIN = -1.5;
+      const POSITION_MAX = 1.5;
       const normalizeAngle = (deg) => {
         const numeric = Number(deg);
         if (!Number.isFinite(numeric)) return 0;
@@ -183,6 +226,17 @@
         rotateValue.textContent = Number.isFinite(numeric) ? `${Math.round(numeric)}°` : '---';
       };
 
+      const clampPosition = (value) => {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) return 0;
+        return Math.min(Math.max(numeric, POSITION_MIN), POSITION_MAX);
+      };
+
+      const updatePositionLabel = (axis, value) => {
+        const display = Number.isFinite(value) ? value.toFixed(2) : '---';
+        positionValues[axis].textContent = display;
+      };
+
       const applyStateToUi = (state) => {
         suppressUiEvents = true;
         if (typeof state.modelScale === 'number' && !Number.isNaN(state.modelScale)) {
@@ -196,6 +250,15 @@
           rotateInput.value = String(clamped);
           updateRotateLabel(clamped);
         }
+        POSITION_AXES.forEach((axis) => {
+          const key = `pos${axis}`;
+          const raw = state[key];
+          if (typeof raw === 'number' && Number.isFinite(raw)) {
+            const clamped = clampPosition(raw);
+            positionInputs[axis].value = clamped.toFixed(2);
+            updatePositionLabel(axis, clamped);
+          }
+        });
         suppressUiEvents = false;
       };
 
@@ -295,8 +358,21 @@
         }
       });
 
+      POSITION_AXES.forEach((axis) => {
+        const input = positionInputs[axis];
+        input.addEventListener('input', () => {
+          if (suppressUiEvents) return;
+          const clamped = clampPosition(input.value);
+          input.value = clamped.toFixed(2);
+          updatePositionLabel(axis, clamped);
+          if (Number.isFinite(clamped)) {
+            updateStateAndSend({ [`pos${axis}`]: clamped });
+          }
+        });
+      });
+
       resetBtn.addEventListener('click', () => {
-        latestState = { modelScale: 1, rotateY: 0 };
+        latestState = { modelScale: 1, rotateY: 0, posX: 0, posY: 0, posZ: 0 };
         applyStateToUi(latestState);
         sendCurrentState();
       });
@@ -314,6 +390,10 @@
       setScaleSliderValue(latestState.modelScale);
       updateScaleLabel(latestState.modelScale);
       updateRotateLabel(latestState.rotateY);
+      POSITION_AXES.forEach((axis) => {
+        positionInputs[axis].value = latestState[`pos${axis}`].toFixed(2);
+        updatePositionLabel(axis, latestState[`pos${axis}`]);
+      });
       connect();
     })();
   </script>

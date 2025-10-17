@@ -4,6 +4,8 @@ const TARGET_SIZE = 0.5; // バウンディングボックスの最大辺をこ�
 const MODEL_POSITION = '0 1.2 1'; // モデルアンカー（固定位置）の配置座標
 const MODEL_BASE_ROTATION_Y = 180; // A-Frameの座標系に合わせるための初期Y回転
 const DEFAULT_ROTATE_Y = 0;
+const POSITION_OFFSET_MIN = -1.5;
+const POSITION_OFFSET_MAX = 1.5;
 
 export function createView({ viewRoot }) {
   let modelEntity = null; // ビュー内で保持するアンカー
@@ -16,6 +18,24 @@ export function createView({ viewRoot }) {
   let baseScale = 1;
   let externalScale = 1;
   let currentRotateY = DEFAULT_ROTATE_Y;
+  const baseAnchorPosition = (() => {
+    if (typeof MODEL_POSITION !== 'string') {
+      return { x: 0, y: 0, z: 0 };
+    }
+    const parts = MODEL_POSITION.trim().split(/\s+/);
+    const [rawX = '0', rawY = '0', rawZ = '0'] = parts;
+    const toNumber = (value) => {
+      const numeric = Number.parseFloat(value);
+      return Number.isFinite(numeric) ? numeric : 0;
+    };
+    return {
+      x: toNumber(rawX),
+      y: toNumber(rawY),
+      z: toNumber(rawZ)
+    };
+  })();
+  const positionOffsets = { x: 0, y: 0, z: 0 };
+  let lastAppliedPositionKey = null;
 
   // A-Frameが内部で利用しているTHREEインスタンスを参照
   const getThree = () => (window.AFRAME && window.AFRAME.THREE) ? window.AFRAME.THREE : null;
@@ -29,6 +49,49 @@ export function createView({ viewRoot }) {
 
   const ZERO_VECTOR = '0 0 0';
   const UNIT_VECTOR = '1 1 1';
+
+  const clampPositionOffset = (value) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return 0;
+    return Math.min(Math.max(numeric, POSITION_OFFSET_MIN), POSITION_OFFSET_MAX);
+  };
+
+  const roundToPrecision = (value, precision = 4) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return 0;
+    const factor = Math.pow(10, precision);
+    return Math.round(numeric * factor) / factor;
+  };
+
+  const buildPositionKey = ({ x, y, z }) => `${x} ${y} ${z}`;
+
+  const computeCombinedPosition = () => ({
+    x: baseAnchorPosition.x + positionOffsets.x,
+    y: baseAnchorPosition.y + positionOffsets.y,
+    z: baseAnchorPosition.z + positionOffsets.z
+  });
+
+  const updateModelPosition = () => {
+    if (!modelEntity) {
+      lastAppliedPositionKey = null;
+      return;
+    }
+    const combined = computeCombinedPosition();
+    const rounded = {
+      x: roundToPrecision(combined.x),
+      y: roundToPrecision(combined.y),
+      z: roundToPrecision(combined.z)
+    };
+    const positionKey = buildPositionKey(rounded);
+    if (lastAppliedPositionKey === positionKey) {
+      return;
+    }
+    modelEntity.setAttribute('position', positionKey);
+    if (modelEntity.object3D) {
+      modelEntity.object3D.position.set(rounded.x, rounded.y, rounded.z);
+    }
+    lastAppliedPositionKey = positionKey;
+  };
 
   const resetEntityTransform = (entity) => {
     if (!entity) return;
@@ -187,7 +250,8 @@ export function createView({ viewRoot }) {
 
   // パラメータストアからの更新を反映
   const updateFromParameters = (params = {}) => {
-    const { modelScale, rotateY } = params;
+    const { modelScale, rotateY, posX, posY, posZ } = params;
+    let positionChanged = false;
 
     if (modelScale !== undefined) {
       const rawScale = Number(modelScale);
@@ -199,6 +263,22 @@ export function createView({ viewRoot }) {
       if (Number.isFinite(value)) {
         currentRotateY = normalizedAngle(value);
       }
+    }
+    const offsetMap = [
+      { key: 'x', value: posX },
+      { key: 'y', value: posY },
+      { key: 'z', value: posZ }
+    ];
+    offsetMap.forEach(({ key, value }) => {
+      if (value === undefined) return;
+      const clamped = clampPositionOffset(value);
+      if (positionOffsets[key] !== clamped) {
+        positionOffsets[key] = clamped;
+        positionChanged = true;
+      }
+    });
+    if (positionChanged) {
+      updateModelPosition();
     }
     applyTransforms();
   };
@@ -288,6 +368,7 @@ export function createView({ viewRoot }) {
 
       applyTransforms();
     }
+    updateModelPosition();
     return { anchor: modelEntity, mesh: meshEntity };
   };
 
@@ -307,6 +388,7 @@ export function createView({ viewRoot }) {
       resetEntityTransform(transformContainer);
       resetPivotDebug();
       applyTransforms();
+      updateModelPosition();
       mesh?.removeAttribute('gltf-model');
       if (src) {
         mesh?.setAttribute('gltf-model', src);
