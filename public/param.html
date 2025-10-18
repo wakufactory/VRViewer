@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <title>VRV Parameter Panel</title>
@@ -16,6 +16,9 @@
       display: flex;
       justify-content: center;
     }
+    body, html {
+      overscroll-behavior: none;  
+    }
     main {
       width: min(480px, 100%);
       display: grid;
@@ -26,6 +29,7 @@
       box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
       border: 1px solid rgba(255, 255, 255, 0.06);
     }
+
     h1 {
       font-size: 1.4rem;
       margin: 0;
@@ -91,23 +95,23 @@
 <body>
   <main>
     <section>
-      <h1>Viewer Parameters</h1>
-      <p style="margin:0;font-size:0.9rem;opacity:0.75;">
-        スライダーやセレクトで値を調整すると、ビューアーへリアルタイムに送信されます。
+      <h1 inert >Viewer Parameters</h1>
+      <p inert style="margin:0;font-size:0.9rem;opacity:0.75;">
+        Adjust parameters with the sliders or selects to push updates to the viewer in real time.
       </p>
     </section>
 
     <section>
-      <label for="scale-slider">
-        モデルスケール
+      <label inert for="scale-slider">
+        Model Scale
         <span id="scale-value">1.00</span>
       </label>
       <input id="scale-slider" type="range" min="-1" max="2" step="0.001" value="0" />
     </section>
 
     <section>
-      <label for="rotateY-slider">
-        モデル向き (°)
+      <label inert for="rotateY-slider">
+        Model Orientation (°)
         <span id="rotateY-value">0°</span>
       </label>
       <input id="rotateY-slider" type="range" min="0" max="360" step="1" value="0" />
@@ -115,22 +119,22 @@
 
     <section>
       <div class="axis-control">
-        <label for="posX-slider">
-          位置 X
+        <label inert for="posX-slider">
+          Position X
           <span id="posX-value">0.00</span>
         </label>
         <input id="posX-slider" type="range" min="-1.5" max="1.5" step="0.01" value="0" />
       </div>
       <div class="axis-control">
-        <label for="posY-slider">
-          位置 Y
+        <label inert for="posY-slider">
+          Position Y
           <span id="posY-value">0.00</span>
         </label>
         <input id="posY-slider" type="range" min="-1.5" max="1.5" step="0.01" value="0" />
       </div>
       <div class="axis-control">
-        <label for="posZ-slider">
-          位置 Z
+        <label inert for="posZ-slider">
+          Position Z
           <span id="posZ-value">0.00</span>
         </label>
         <input id="posZ-slider" type="range" min="-1.5" max="1.5" step="0.01" value="0" />
@@ -138,11 +142,11 @@
     </section>
 
     <section class="controls-row">
-      <button type="button" id="reset-btn">パラメータを初期化</button>
+      <button type="button" id="reset-btn">Reset Parameters</button>
     </section>
 
     <section class="status">
-      <span id="connection-status">接続中...</span>
+      <span id="connection-status">Connecting...</span>
     </section>
   </main>
 
@@ -169,7 +173,7 @@
       );
 
       if (!scaleInput || !scaleValue || !rotateInput || !rotateValue || !statusEl || missingPositionEl) {
-        console.warn('[param] 必要なDOMが見つからないため初期化を中断します');
+        console.warn('[param] Required DOM nodes missing. Initialization aborted.');
         return;
       }
 
@@ -271,7 +275,7 @@
           ws.send(JSON.stringify({ type: 'params', params: latestState }));
           pendingFullSync = false;
         } catch (err) {
-          console.warn('[param] パラメータ送信に失敗しました', err);
+          console.warn('[param] Failed to send parameters', err);
           pendingFullSync = true;
         }
       };
@@ -300,11 +304,11 @@
         const proto = location.protocol === 'https:' ? 'wss' : 'ws';
         const basePath = location.pathname.replace(/\/[^\/]*$/, '');
         const url = `${proto}://${location.host}${basePath || ''}/`;
-        setStatus('接続中...');
+        setStatus('Connecting...');
         ws = new WebSocket(url);
 
         ws.onopen = () => {
-          setStatus('接続済み');
+          setStatus('Connected');
           sendCurrentState();
         };
 
@@ -331,11 +335,11 @@
         };
 
         ws.onerror = () => {
-          setStatus('接続エラー (再試行)');
+          setStatus('Connection error (retrying)');
         };
 
         ws.onclose = () => {
-          setStatus('未接続 (再接続待ち)');
+          setStatus('Disconnected (waiting to reconnect)');
           reconnectTimer = setTimeout(connect, 1000);
         };
       };
