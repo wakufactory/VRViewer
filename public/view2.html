@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>VRV Viewer Dual Panel</title>
+  <style>
+    /* このページ全体の背景色と余白を設定する */
+    body {
+      margin: 0;
+      background-color: #1f1f24;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    body, html {
+      overscroll-behavior: none;  
+    }
+    /* 2つのiframeを横並びに配置するためのコンテナ */
+    .layout {
+      display: flex;
+      width: 100vw;
+      height: 100vh;
+    }
+    /* パラメータパネルを1/3幅で固定する */
+    .panel-param {
+      width: 33.3333%;
+      height: 100%;
+      border: none;
+    }
+    /* ビューアを残り2/3幅で表示する */
+    .panel-view {
+      flex: 1;
+      height: 100%;
+      border: none;
+    }
+  </style>
+</head>
+<body>
+  <!-- 2つのiframeを横並びで配置し、それぞれparam.htmlとview.htmlを表示する -->
+  <div class="layout">
+    <iframe class="panel-param" src="param.html" title="Parameter Panel"></iframe>
+    <iframe class="panel-view" src="view.html" title="Viewer"></iframe>
+  </div>
+</body>
+</html>
