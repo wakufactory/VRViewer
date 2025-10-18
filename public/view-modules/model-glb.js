@@ -6,6 +6,8 @@ const MODEL_BASE_ROTATION_Y = 180; // A-Frameの座標系に合わせるため�
 const DEFAULT_ROTATE_Y = 0;
 const POSITION_OFFSET_MIN = -1.5;
 const POSITION_OFFSET_MAX = 1.5;
+const ZERO_VECTOR = '0 0 0';
+const UNIT_VECTOR = '1 1 1';
 
 export function createView({ viewRoot }) {
   let modelEntity = null; // ビュー内で保持するアンカー
@@ -18,20 +20,25 @@ export function createView({ viewRoot }) {
   let baseScale = 1;
   let externalScale = 1;
   let currentRotateY = DEFAULT_ROTATE_Y;
+  let lastAppliedScale = null;
+  let lastAppliedRotateY = null;
+  let currentVisibility = null;
+
+  const toFiniteNumber = (value, fallback = 0) => {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : fallback;
+  };
+
   const baseAnchorPosition = (() => {
     if (typeof MODEL_POSITION !== 'string') {
       return { x: 0, y: 0, z: 0 };
     }
     const parts = MODEL_POSITION.trim().split(/\s+/);
     const [rawX = '0', rawY = '0', rawZ = '0'] = parts;
-    const toNumber = (value) => {
-      const numeric = Number.parseFloat(value);
-      return Number.isFinite(numeric) ? numeric : 0;
-    };
     return {
-      x: toNumber(rawX),
-      y: toNumber(rawY),
-      z: toNumber(rawZ)
+      x: toFiniteNumber(Number.parseFloat(rawX)),
+      y: toFiniteNumber(Number.parseFloat(rawY)),
+      z: toFiniteNumber(Number.parseFloat(rawZ))
     };
   })();
   const positionOffsets = { x: 0, y: 0, z: 0 };
@@ -42,23 +49,18 @@ export function createView({ viewRoot }) {
 
   // 任意の角度を0〜360の範囲に正規化する
   const normalizedAngle = (value) => {
-    if (!Number.isFinite(value)) return DEFAULT_ROTATE_Y;
-    const mod = value % 360;
+    const numeric = toFiniteNumber(value, DEFAULT_ROTATE_Y);
+    const mod = numeric % 360;
     return mod < 0 ? mod + 360 : mod;
   };
 
-  const ZERO_VECTOR = '0 0 0';
-  const UNIT_VECTOR = '1 1 1';
-
   const clampPositionOffset = (value) => {
-    const numeric = Number(value);
-    if (!Number.isFinite(numeric)) return 0;
+    const numeric = toFiniteNumber(value);
     return Math.min(Math.max(numeric, POSITION_OFFSET_MIN), POSITION_OFFSET_MAX);
   };
 
   const roundToPrecision = (value, precision = 4) => {
-    const numeric = Number(value);
-    if (!Number.isFinite(numeric)) return 0;
+    const numeric = toFiniteNumber(value);
     const factor = Math.pow(10, precision);
     return Math.round(numeric * factor) / factor;
   };
@@ -103,6 +105,10 @@ export function createView({ viewRoot }) {
     object3D.position.set(0, 0, 0);
     object3D.rotation.set(0, 0, 0);
     object3D.scale.set(1, 1, 1);
+    if (entity === transformContainer) {
+      lastAppliedScale = null;
+      lastAppliedRotateY = null;
+    }
   };
 
   const computeBoundingBox = (object, referenceEntity = null) => {
@@ -166,22 +172,18 @@ export function createView({ viewRoot }) {
       object3D.position.set(0, 0, 0);
       object3D.rotation.set(0, 0, 0);
     }
-    if (pivotDebugMesh) {
-      disposePivotDebugMesh();
-    }
+    disposePivotDebugMesh();
   };
 
   const disposePivotDebugMesh = () => {
-    if (!pivotDebugMesh || !pivotDebugEntity) return;
-    const object3D = pivotDebugEntity.object3D;
-    if (object3D && pivotDebugMesh.parent === object3D) {
-      object3D.remove(pivotDebugMesh);
+    if (!pivotDebugMesh) return;
+    const pivotObject = pivotDebugEntity?.object3D;
+    if (pivotObject && pivotDebugMesh.parent === pivotObject) {
+      pivotObject.remove(pivotDebugMesh);
     }
-    if (pivotDebugMesh.geometry) {
-      pivotDebugMesh.geometry.dispose();
-    }
+    pivotDebugMesh.geometry?.dispose?.();
     if (Array.isArray(pivotDebugMesh.material)) {
-      pivotDebugMesh.material.forEach((material) => material.dispose?.());
+      pivotDebugMesh.material.forEach((material) => material?.dispose?.());
     } else {
       pivotDebugMesh.material?.dispose?.();
     }
@@ -205,9 +207,7 @@ export function createView({ viewRoot }) {
     );
     safeBox.setFromCenterAndSize(center, size);
 
-    if (pivotDebugMesh) {
-      disposePivotDebugMesh();
-    }
+    disposePivotDebugMesh();
 
     const debugColor = getDebugColor(THREE) || new THREE.Color('#00ffff');
     pivotDebugMesh = new THREE.Box3Helper(safeBox, debugColor);
@@ -223,15 +223,22 @@ export function createView({ viewRoot }) {
 
   // モデル関連エンティティをまとめて表示・非表示
   const setVisibility = (visible) => {
+    if (currentVisibility === visible) {
+      if (DEBUG_PIVOT_WIREFRAME && pivotDebugMesh) {
+        pivotDebugMesh.visible = visible;
+      }
+      return;
+    }
+    currentVisibility = visible;
     const value = visible ? 'true' : 'false';
     if (modelEntity) modelEntity.setAttribute('visible', value);
     if (transformContainer) transformContainer.setAttribute('visible', value);
     if (meshEntity) meshEntity.setAttribute('visible', value);
     if (DEBUG_PIVOT_WIREFRAME && pivotDebugEntity) {
       pivotDebugEntity.setAttribute('visible', value);
-      if (pivotDebugMesh) {
-        pivotDebugMesh.visible = visible;
-      }
+    }
+    if (DEBUG_PIVOT_WIREFRAME && pivotDebugMesh) {
+      pivotDebugMesh.visible = visible;
     }
   };
 
@@ -239,29 +246,42 @@ export function createView({ viewRoot }) {
   const applyTransforms = () => {
     if (!transformContainer) return;
     const finalScale = Math.max(0.000001, baseScale * externalScale);
-    const scaleText = `${finalScale} ${finalScale} ${finalScale}`;
-    transformContainer.setAttribute('scale', scaleText);
-    if (transformContainer.object3D) {
-      transformContainer.object3D.scale.set(finalScale, finalScale, finalScale);
-    }
     const totalY = normalizedAngle(MODEL_BASE_ROTATION_Y + currentRotateY);
-    transformContainer.setAttribute('rotation', `0 ${totalY} 0`);
+    if (lastAppliedScale !== finalScale) {
+      const scaleText = `${finalScale} ${finalScale} ${finalScale}`;
+      transformContainer.setAttribute('scale', scaleText);
+      transformContainer.object3D?.scale.set(finalScale, finalScale, finalScale);
+      lastAppliedScale = finalScale;
+    }
+    if (lastAppliedRotateY !== totalY) {
+      transformContainer.setAttribute('rotation', `0 ${totalY} 0`);
+      lastAppliedRotateY = totalY;
+    }
   };
 
   // パラメータストアからの更新を反映
   const updateFromParameters = (params = {}) => {
     const { modelScale, rotateY, posX, posY, posZ } = params;
     let positionChanged = false;
+    let transformChanged = false;
 
     if (modelScale !== undefined) {
       const rawScale = Number(modelScale);
-      externalScale = Number.isFinite(rawScale) && rawScale > 0 ? rawScale : 1;
+      const nextScale = Number.isFinite(rawScale) && rawScale > 0 ? rawScale : 1;
+      if (externalScale !== nextScale) {
+        externalScale = nextScale;
+        transformChanged = true;
+      }
     }
 
     if (rotateY !== undefined) {
       const value = Number(rotateY);
       if (Number.isFinite(value)) {
-        currentRotateY = normalizedAngle(value);
+        const normalized = normalizedAngle(value);
+        if (normalized !== currentRotateY) {
+          currentRotateY = normalized;
+          transformChanged = true;
+        }
       }
     }
     const offsetMap = [
@@ -280,7 +300,9 @@ export function createView({ viewRoot }) {
     if (positionChanged) {
       updateModelPosition();
     }
-    applyTransforms();
+    if (transformChanged) {
+      applyTransforms();
+    }
   };
 
   // glTFモデルが読み込まれた際に一度中心化・スケールを算出する
